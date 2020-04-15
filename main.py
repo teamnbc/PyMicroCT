@@ -6,9 +6,8 @@
 ############################################
 
 import sys, os
-from analysis import run_analysis
+from analysis import run_analysis, vertebral_profiles
 import utilities as utils
-
 
 if __name__ == '__main__':
     # Assuming main.py is launched from appropirate folder...
@@ -22,4 +21,5 @@ if __name__ == '__main__':
         sys.exit('Current folder name looks suspicious.')
     if list_dirs[-3]!='SPINE':
         sys.exit('Not in righ folder.')
-    run_analysis(session = list_dirs[-2], mouse = list_dirs[-1])
+    # run_analysis(session = list_dirs[-2], mouse = list_dirs[-1])
+    vertebral_profiles(session = list_dirs[-2], mouse = list_dirs[-1])
