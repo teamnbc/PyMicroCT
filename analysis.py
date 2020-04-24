@@ -30,8 +30,10 @@ arr3d_8/32_masked3: side mask applied to arr3d_32_masked2.
 '''
 
 def run_analysis(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', struct='SPINE'):
-    # session='20190724_SPINE'
-    # mouse='BY926_24_Colonne_165213'
+    datapath='/home/ghyomm/DATA_MICROCT'
+    struct='SPINE'
+    session='20200202_SPINE'
+    mouse='BY908_29_Colonne_114959'
     #
     ''' Step 1: define paths '''
     analysis_path = os.path.join(datapath, struct, session, mouse, 'analysis')
@@ -66,8 +68,10 @@ def run_analysis(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', struct='S
                     msg_rear='Draw mouse contour (press \'q\' to escape)', fact_rear=3,
                     imsrc_side=im_side_rgb,
                     msg_side='Draw spine contour (press \'q\' to escape)', fact_side=3)
-    roi1.horiz.DrawHorizLine()  # Draw horizontal line underneath mouse on rear projection
-    cv2.imwrite(os.path.join(im_path, 'roi1_horiz_im.png'), roi1.horiz.im)
+    roi1.tilt.horizontal_line()  # Draw horizontal line underneath mouse on rear projection
+    cv2.imwrite(os.path.join(im_path, 'roi1_horiz_im.png'), roi1.tilt.im_resized)
+    roi1.tilt.vertical_line()
+    cv2.imwrite(os.path.join(im_path, 'roi1_vert_im.png'), roi1.tilt.im_resized)
     roi1.rear.drawpolygon()  # Draw mouse's contour on rear view to define rear mask
     # cv2.imwrite(os.path.join(im_path, 'roi1_rear_im.png'), roi1.rear.im)
     # cv2.imwrite(os.path.join(im_path, 'roi1_rear_immask.png'), roi1.rear.immask)
@@ -202,7 +206,7 @@ def run_analysis(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', struct='S
     with open(os.path.join(analysis_path, 'params.txt'), 'w') as outfile:
         outfile.write(os.path.join(datapath, struct, session, mouse) + "\n")
         outfile.write("Date = " + today.strftime("%Y-%m-%d") + "\n")
-        outfile.write("Angle = " + str(roi1.horiz.angle) + " deg\n")
+        outfile.write("Angle = " + str(roi1.tilt.angle) + " deg\n")
         outfile.write("Voxel size = " + str(tuple([int(round(1000 * x)) for x in voxel_spacing])) + " um\n")
         outfile.write("roi2.top.resize_factor = " + str(roi2.top.resize_factor) + "\n")
         outfile.write("roi3.side.resize_factor = " + str(roi3.side.resize_factor) + "\n")
@@ -213,71 +217,6 @@ def run_analysis(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', struct='S
         roi_name = 'roi' + str(i)
         with open(os.path.join(roi_path, roi_name + '.pickle'), 'wb') as f:
             pickle.dump(locals()[roi_name], f)
-
-    ''' Step 10. Compute vertebrae profiles using projection plane perpendicular to spine axis '''
-    # We use the midpoints calculated above
-    # u, v, w: reference frame
-    u = np.array([1, 0, 0])
-    v = np.array([0, 1, 0])
-    w = np.array([0, 0, 1])
-    arr = np.flip(np.flip(np.swapaxes(arr3d_8_masked1, 2, 1), 0), 2)
-    v_analysis_path = os.path.join(im_path, 'vertebrae')  # Where images will be saved
-    if not os.path.exists(v_analysis_path):
-        os.makedirs(v_analysis_path)
-    print('Computing oblique projections through vertebrae... ', end='')
-    for k in range(N_V_annotated):
-        TV1 = pts_side_arr_sorted[k + 1] - pts_side_arr_sorted[k]
-        TV2 = vlimits[k + 1] - vlimits[k]
-        vec = utils.norml(np.array([TV1[0],TV2[0],TV1[1]]))
-        up = utils.norml(utils.vprod(v, vec))
-        vp = utils.norml(utils.vprod(vec, up))
-        ori = np.array([midpts[k, 0], 3*512-center_v[k, 0], midpts[k, 1]]) / 3
-        v_im1 = np.zeros((71, 71))
-        v_im2 = np.zeros((71, 71))
-        v_im3 = np.zeros((71, 71))
-        v_im4 = np.zeros((71, 71))
-        v_im5 = np.zeros((71, 71))
-        for i in np.linspace(-35,35,num=71):
-            for j in np.linspace(-35,35,num=71):
-                coord = np.round(ori - (2*vec) + i * up + j * vp).astype('int16')
-                if not np.any((coord >= 512) | (coord <= 0)):
-                    v_im1[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
-                else:
-                    v_im1[int(i + 35), int(j + 35)] = 0
-                coord = np.round(ori - vec + i*up + j*vp).astype('int16')
-                if not np.any((coord >= 512) | (coord <= 0)):
-                    v_im2[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
-                else:
-                    v_im2[int(i + 35), int(j + 35)] = 0
-                coord = np.round(ori + i*up + j*vp).astype('int16')
-                if not np.any((coord >= 512) | (coord <= 0)):
-                    v_im3[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
-                else:
-                    v_im3[int(i + 35), int(j + 35)] = 0
-                coord = np.round(ori + vec + i*up + j*vp).astype('int16')
-                if not np.any((coord >= 512) | (coord <= 0)):
-                    v_im4[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
-                else:
-                    v_im4[int(i + 35), int(j + 35)] = 0
-                coord = np.round(ori + (2*vec) + i * up + j * vp).astype('int16')
-                if not np.any((coord >= 512) | (coord <= 0)):
-                    v_im5[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
-                else:
-                    v_im5[int(i + 35), int(j + 35)] = 0
-        v_im = np.amax(np.array([v_im1, v_im2, v_im3, v_im4, v_im5]), axis=0)
-        v_im_resized, resize_factor = utils.customResize(v_im, 3)
-        ret, v_im_bin = cv2.threshold(v_im_resized, 100, 255, cv2.THRESH_BINARY)
-        # v_im_sharpened = cv2.filter2D(v_im, -1, kernel_sharpening)
-        # v_im_resized, resize_factor = utils.customResize(v_im, 3)
-        # v_im_resized = utils.imRescale2uint8(utils.imLevels(v_im_resized, 70, 220))
-        v_im_bin_rgb = cv2.merge(((v_im_bin,) * 3))
-        cv2.line(v_im_bin_rgb, (107 - 10, 107), (107 + 10, 107), (0, 0, 255), 2)
-        cv2.line(v_im_bin_rgb, (107, 107 - 10), (107, 107 + 10), (0, 0, 255), 2)
-        cv2.putText(v_im_bin_rgb, roi3.side.V_ID[k], (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), lineType=cv2.LINE_AA)
-        cv2.rectangle(v_im_bin_rgb, (0, 0), (int(71*resize_factor-1), int(71*resize_factor-1)), (130, 130, 130), 1)
-        cv2.imwrite(os.path.join(v_analysis_path, "%02d" % k + '_' + roi3.side.V_ID[k] + '.png'), v_im_bin_rgb)
-    print('done.')
 
 def vertebral_profiles(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', struct='SPINE'):
     '''

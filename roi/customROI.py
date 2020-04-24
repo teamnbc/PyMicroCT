@@ -21,7 +21,7 @@ class CustROI1:
     def __init__(self, imsrc_horiz, msg_horiz, fact_horiz,
                  imsrc_rear, msg_rear, fact_rear,
                  imsrc_side, msg_side, fact_side):
-        self.horiz = DrawLine(imsrc_horiz, msg_horiz, fact_horiz)  # Draw line underneath mouse
+        self.tilt = DrawLine(imsrc_horiz, msg_horiz, fact_horiz)  # Draw line underneath mouse
         self.rear = DrawPoly(imsrc_rear, msg_rear, fact_rear)  # Draw polygon around mouse on rear view
         self.side = DrawPoly(imsrc_side, msg_side, fact_side)  # Draw polygon around spine on side view
 
@@ -39,67 +39,64 @@ class CustROI3:
 
 
 class DrawLine:
-    """Class used to draw a line underneath the mouse to calculate tilt angle"""
+    '''Class used to draws lines to estimate mouse tilt'''
     def __init__(self, im, msg, fact):
-        self.im = im
-        self.fact = fact
-        self.msg = msg
+        self.im = im  # Source image
+        self.fact = fact  # Resize factor
+        self.msg = msg  # Used as window handler
         self.pts = []
-        self.angle = None
+        self.hangle = None  # Angle of horizontal line
+        '''hangle > 0 means tilt to the right'''
+        self.vangle = None  # Angle of vertical line
+        '''vangle > 0 means tilt to the right'''
         self.closest = None
         self.closest_last = None
         self.im_resized, self.resize_factor = utils.customResize(self.im, self.fact)
         self.im_copy = self.im_resized.copy()
 
-    def DrawHorizLine(self):
-        cv2.imshow(self.msg, self.im_resized)  # Initialize window with proper title
-        cv2.setMouseCallback(self.msg, self.callback)  # Bind window to the callback
-        while True:
-            cv2.imshow(self.msg, self.im_resized)  # Update display to show lines
+    def draw_pts_line(self):
+        '''Function used to draw points and lines'''
+        if(len(self.pts)>0):
             for i in range(len(self.pts)):
                 cv2.circle(self.im_resized, tuple(self.pts[i]), 5, (0, 255, 0), -1)
             if self.closest is not None:
                 cv2.circle(self.im_resized, tuple(self.closest), 20, (255, 255, 0), 1)
-            if len(self.pts) > 1:
-                for i in range(len(self.pts) - 1):
-                    cv2.line(self.im_resized, tuple(self.pts[i]), tuple(self.pts[i + 1]), (0, 255, 0), 2)
-                self.angle = round(math.atan((self.pts[1][1] - self.pts[0][1]) /
-                                             (self.pts[1][0] - self.pts[0][0])) * (180 / math.pi), 2)
-                xtext = int(math.floor((self.pts[0][0] + self.pts[1][0])/2))
-                ytext = int(math.floor((self.pts[0][1] + self.pts[1][1])/2))
-                cv2.putText(self.im_resized, str(self.angle)+" deg", (xtext, ytext),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), lineType=cv2.LINE_AA)
+        if len(self.pts) > 1:
+            for i in range(len(self.pts) - 1):
+                cv2.line(self.im_resized, tuple(self.pts[i]), tuple(self.pts[i + 1]), (0, 255, 0), 2)
+
+    def horizontal_line(self):
+        cv2.namedWindow(self.msg)
+        cv2.setMouseCallback(self.msg, self.callback_h)  # Bind to appropriate callback
+        cv2.imshow(self.msg, self.im_resized)
+        while True:
             if (cv2.waitKey(1) & 0xFF) == ord('q'):  # Hit `q` to exit
-                if len(self.pts) == 2:  # Means user has drawn line
-                    self.pts = np.round(np.array(self.pts) / self.resize_factor).astype(int)
-                    # Annotate original image
-                    for i in range(len(self.pts)):
-                        cv2.circle(self.im, tuple(self.pts[i]), 5, (0, 255, 0), -1)
-                    for i in range(len(self.pts) - 1):
-                        cv2.line(self.im, tuple(self.pts[i]), tuple(self.pts[i + 1]), (0, 255, 0), 2)
-                    xtext = int(math.floor((self.pts[0][0] + self.pts[1][0]) / 2))
-                    ytext = int(math.floor((self.pts[0][1] + self.pts[1][1]) / 2))
-                    cv2.putText(self.im, str(self.angle) + " deg", (xtext, ytext),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), lineType=cv2.LINE_AA)
-                else:
-                    self.pts = []
                 cv2.destroyWindow(self.msg)
-                break  # Return to main function
+                break
             time.sleep(0.01)  # Slow down while loop to reduce CPU usage
 
-    def callback(self, event, x, y, flags, params):
-        """Respond to mouse events"""
+    def callback_h(self, event, x, y, flags, params):
+        '''
+        Respond to mouse events in horizontal_line function
+        Updates image and draw point and lines
+        '''
         if event == cv2.EVENT_LBUTTONDOWN and len(self.pts) < 2:
+            self.closest = [x, y]
             self.pts.append([x, y])
-        if event == cv2.EVENT_MBUTTONDOWN and (len(self.pts) >= 1):
-            diff = np.sum(np.power(np.tile([x, y], [len(self.pts), 1]) - np.array(self.pts),2),1)
-            del self.pts[diff.argmin()]
-            diff = np.sum(np.power(np.tile([x, y], [len(self.pts), 1]) - np.array(self.pts), 2), 1)
-            self.closest = self.pts[diff.argmin()]
             self.im_resized = self.im_copy.copy()
-            self.closest_last = self.closest
-            self.something_changed = True
-        if event == cv2.EVENT_MOUSEMOVE and (len(self.pts) >= 1):
+        if event == cv2.EVENT_MBUTTONDOWN and (len(self.pts) >= 1):
+            if(len(self.pts)>1):
+                diff = np.sum(np.power(np.tile([x, y], [len(self.pts), 1]) - np.array(self.pts),2),1)
+                del self.pts[diff.argmin()]
+                diff = np.sum(np.power(np.tile([x, y], [len(self.pts), 1]) - np.array(self.pts), 2), 1)
+                self.closest = self.pts[diff.argmin()]
+                self.closest_last = self.closest
+            elif(len(self.pts)==1):
+                self.pts = []
+                self.closest = None
+                self.closest_last = None
+            self.im_resized = self.im_copy.copy()
+        if event == cv2.EVENT_MOUSEMOVE and (len(self.pts) > 0):
             # Find reference point closest to latest mouse position (= closest reference point)
             diff = np.sum(np.power(np.tile([x, y], [len(self.pts), 1]) - np.array(self.pts), 2), 1)
             self.closest = self.pts[diff.argmin()]
@@ -107,7 +104,73 @@ class DrawLine:
             if self.closest_last != self.closest:
                 self.im_resized = self.im_copy.copy()
                 self.closest_last = self.closest
-                self.something_changed = True
+        self.draw_pts_line()
+        if len(self.pts) > 1:
+            self.hangle = round(math.atan((self.pts[1][1] - self.pts[0][1]) /
+                            (self.pts[1][0] - self.pts[0][0])) * (180 / math.pi), 1)
+            xtext = int(math.floor((self.pts[0][0] + self.pts[1][0])/2))
+            ytext = int(math.floor((self.pts[0][1] + self.pts[1][1])/2))
+            cv2.putText(self.im_resized, str(self.hangle)+' deg', (xtext, ytext),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), lineType=cv2.LINE_AA)
+        cv2.imshow(self.msg, self.im_resized)
+
+    def vertical_line(self):
+        self.pts = []
+        self.closest = None
+        self.closest_last = None
+        self.im_resized = self.im_copy.copy()
+        cv2.namedWindow(self.msg)
+        cv2.setMouseCallback(self.msg, self.callback_v)  # Bind to appropriate callback
+        cv2.imshow(self.msg, self.im_resized)
+        while True:
+            if (cv2.waitKey(1) & 0xFF) == ord('q'):  # Hit `q` to exit
+                cv2.destroyWindow(self.msg)
+                break
+            time.sleep(0.01)  # Slow down while loop to reduce CPU usage
+
+    def callback_v(self, event, x, y, flags, params):
+        '''
+        Respond to mouse events in vertical_line function
+        Updates image and draw point and lines
+        '''
+        if event == cv2.EVENT_LBUTTONDOWN and len(self.pts) < 2:
+            self.closest = [x, y]
+            self.pts.append([x, y])
+            self.im_resized = self.im_copy.copy()
+        if event == cv2.EVENT_MBUTTONDOWN and (len(self.pts) >= 1):
+            if(len(self.pts)>1):
+                diff = np.sum(np.power(np.tile([x, y], [len(self.pts), 1]) - np.array(self.pts), 2), 1)
+                del self.pts[diff.argmin()]
+                diff = np.sum(np.power(np.tile([x, y], [len(self.pts), 1]) - np.array(self.pts), 2), 1)
+                self.closest = self.pts[diff.argmin()]
+                self.closest_last = self.closest
+            elif(len(self.pts)==1):
+                self.pts = []
+                self.closest = None
+                self.closest_last = None
+            self.im_resized = self.im_copy.copy()
+            if(len(self.pts)==1):
+                cv2.line(self.im_resized, tuple(self.pts[0]), tuple([x, y]), (0, 255, 0), 2)
+        if event == cv2.EVENT_MOUSEMOVE and (len(self.pts) > 0):
+            if(len(self.pts)==1):
+                self.im_resized = self.im_copy.copy()
+                cv2.line(self.im_resized, tuple(self.pts[0]), tuple([x, y]), (0, 255, 0), 2)
+            # Find reference point closest to latest mouse position (= closest reference point)
+            diff = np.sum(np.power(np.tile([x, y], [len(self.pts), 1]) - np.array(self.pts), 2), 1)
+            self.closest = self.pts[diff.argmin()]
+            # Update coordinates of closest reference point
+            if self.closest_last != self.closest:
+                self.im_resized = self.im_copy.copy()
+                self.closest_last = self.closest
+        self.draw_pts_line()
+        if len(self.pts) > 1:
+            self.vangle = -round(math.atan((self.pts[1][0] - self.pts[0][0]) /
+                            (self.pts[1][1] - self.pts[0][1])) * (180 / math.pi), 1)
+            xtext = int(math.floor((self.pts[0][0] + self.pts[1][0])/2))
+            ytext = int(math.floor((self.pts[0][1] + self.pts[1][1])/2))
+            cv2.putText(self.im_resized, str(self.vangle)+' deg', (xtext, ytext),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), lineType=cv2.LINE_AA)
+        cv2.imshow(self.msg, self.im_resized)
 
 
 class DrawPoly:
