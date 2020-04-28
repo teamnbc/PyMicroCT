@@ -21,5 +21,5 @@ if __name__ == '__main__':
         sys.exit('Current folder name looks suspicious.')
     if list_dirs[-3]!='SPINE':
         sys.exit('Not in righ folder.')
-    run_analysis(session = list_dirs[-2], mouse = list_dirs[-1])
-    # vertebral_profiles(session = list_dirs[-2], mouse = list_dirs[-1])
+    # run_analysis(session = list_dirs[-2], mouse = list_dirs[-1])
+    vertebral_profiles(session = list_dirs[-2], mouse = list_dirs[-1])
