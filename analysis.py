@@ -227,8 +227,8 @@ def vertebral_profiles(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', str
     - number of vertebrae annotated
     '''
 
-    # session='20190724_SPINE'
-    # mouse='BY926_24_Colonne_165213'
+    # session='20200202_SPINE'
+    # mouse='BY908_29_Colonne_114959'
 
     ''' Step 1: define paths '''
     analysis_path = os.path.join(datapath, struct, session, mouse, 'analysis')
