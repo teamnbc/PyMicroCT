@@ -30,10 +30,10 @@ arr3d_8/32_masked3: side mask applied to arr3d_32_masked2.
 '''
 
 def run_analysis(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', struct='SPINE'):
-    datapath='/home/ghyomm/DATA_MICROCT'
-    struct='SPINE'
-    session='20200202_SPINE'
-    mouse='BY908_29_Colonne_114959'
+    # datapath='/home/ghyomm/DATA_MICROCT'
+    # struct='SPINE'
+    # session='20200202_SPINE'
+    # mouse='BY908_29_Colonne_114959'
     #
     ''' Step 1: define paths '''
     analysis_path = os.path.join(datapath, struct, session, mouse, 'analysis')
