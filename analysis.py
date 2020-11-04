@@ -1,10 +1,13 @@
 
 
-import os, cv2, dicom, roi, time, pickle, sys
+import os, cv2, dicom, roi, time, pickle, sys, glob
 import numpy as np
 import utilities as utils
 from datetime import date
 from scipy.interpolate import interp1d
+import symmetry as sym
+from cython_code import cyutils
+import pandas as pd
 
 # Drawing functions and related classes are in roi/customROI.py
 
@@ -221,16 +224,6 @@ def run_analysis(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', struct='S
             pickle.dump(locals()[roi_name], f)
 
 def vertebral_profiles(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', struct='SPINE'):
-    '''
-    Ongoing work: this function will take on the analysis from step 10 on.
-    Need to regenerate/load the following variables:
-    (better to save all roi objects using pickle)
-    - arr3d_8_masked1
-    - number of vertebrae annotated
-    '''
-
-    # session='20200202_SPINE'
-    # mouse='BY908_29_Colonne_114959'
 
     ''' Step 1: define paths '''
     analysis_path = os.path.join(datapath, struct, session, mouse, 'analysis')
@@ -293,6 +286,10 @@ def vertebral_profiles(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', str
     v_analysis_path = os.path.join(im_path, 'vertebrae')  # Where images will be saved
     if not os.path.exists(v_analysis_path):
         os.makedirs(v_analysis_path)
+    if not os.path.exists(os.path.join(v_analysis_path, 'raw')):
+        os.makedirs(os.path.join(v_analysis_path, 'raw'))
+    if not os.path.exists(os.path.join(v_analysis_path, 'labeled')):
+        os.makedirs(os.path.join(v_analysis_path, 'labeled'))
     # print('Computing oblique projections through vertebrae... ', end='')
     sys.stdout.write('Computing oblique projections through vertebrae... ')
     N_V_annotated = len(roi3.side.V_ID)  # Number of vertebrae annotated
@@ -341,11 +338,46 @@ def vertebral_profiles(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', str
         # v_im_sharpened = cv2.filter2D(v_im, -1, kernel_sharpening)
         # v_im_resized, resize_factor = utils.customResize(v_im, 3)
         # v_im_resized = utils.imRescale2uint8(utils.imLevels(v_im_resized, 70, 220))
+        # Save binary image (greyscale)
+        cv2.imwrite(os.path.join(v_analysis_path,'raw', "%02d" % k + '_' + roi3.side.V_ID[k] + '.png'), v_im_bin)
+        # Then save labeled image (rgb)
         v_im_bin_rgb = cv2.merge(((v_im_bin,) * 3))
         cv2.line(v_im_bin_rgb, (107 - 10, 107), (107 + 10, 107), (0, 0, 255), 2)
         cv2.line(v_im_bin_rgb, (107, 107 - 10), (107, 107 + 10), (0, 0, 255), 2)
         cv2.putText(v_im_bin_rgb, roi3.side.V_ID[k], (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), lineType=cv2.LINE_AA)
         cv2.rectangle(v_im_bin_rgb, (0, 0), (int(71*resize_factor-1), int(71*resize_factor-1)), (130, 130, 130), 1)
-        cv2.imwrite(os.path.join(v_analysis_path, "%02d" % k + '_' + roi3.side.V_ID[k] + '.png'), v_im_bin_rgb)
+        cv2.imwrite(os.path.join(v_analysis_path,'labeled', "%02d" % k + '_' + roi3.side.V_ID[k] + '.png'), v_im_bin_rgb)
     print('done.')
+
+def vertebral_angles(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', struct='SPINE'):
+
+    ''' Step 1: define paths '''
+    analysis_path = os.path.join(datapath, struct, session, mouse, 'analysis')
+    raw_im_path = os.path.join(analysis_path, 'images','vertebrae','raw')
+    sym_im_path = os.path.join(analysis_path, 'images','vertebrae','sym')
+    if not os.path.exists(sym_im_path):
+        os.makedirs(sym_im_path)
+
+    '''Step 2: loop through vertebrae images and compute symmetry'''
+    res = []
+    for imfile in glob.glob(raw_im_path + '/*.png'):
+        im = cv2.imread(imfile, cv2.IMREAD_GRAYSCALE)
+        refpt = np.array([100,100],dtype=np.uint16)
+        angle_range = np.array([-30,30],dtype=np.int16)
+        hoffset_range = np.array([-20,21],dtype=np.int16)
+        im_out = cyutils.compute_sym_axis(im,refpt,angle_range,hoffset_range)
+        max_coord = np.where(im_out == np.amax(im_out))
+        best_angle = int(max_coord[0] + angle_range[0])
+        best_offset = int(max_coord[1] + hoffset_range[0])
+        imsym = sym.compute_angle_and_offset(im,best_angle,best_offset)
+        im_filename = os.path.split(imfile)[-1]
+        index = im_filename.split('_')[0]
+        ID = im_filename.split('_')[1].split('.')[0]
+        res.append({'index':int(index),'ID':ID,'angle':best_angle})
+        cv2.imwrite(os.path.join(sym_im_path,os.path.split(imfile)[-1]), imsym)
+
+    df = pd.DataFrame(res).sort_values(by='index')
+    df.reset_index(inplace=True,drop=True)
+    del df['index']
+    df.to_csv(os.path.join(analysis_path,'vertebrae_angles.txt'),sep='\t', index=True, header=True)

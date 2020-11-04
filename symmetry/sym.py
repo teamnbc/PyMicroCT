@@ -39,9 +39,15 @@ def sym_point(refpt,vec,pt):
     return(np.trunc(2 * proj_pt - pt).astype('int'))
 
 
-def test_angle_offset(im,angle,hoffset,refpt=np.array([100,100],dtype=np.uint16)):
+def compute_angle_and_offset(im,angle,hoffset,refpt=np.array([100,100],dtype=np.uint16)):
     '''Test overlap btw original and mirror image using...
     ... a symmetry axis defined by a specific angle and offset '''
+    '''
+    Rationale: move the reference point along horizontal line
+    to the left and right (over defined interval)
+    For each position of the reference point, draw line passing through the reference point
+    and change tilt angle of the line
+    '''
     new_refpt = refpt + np.array([hoffset, 0],dtype=np.uint16)
     im_sym, counts = cyutils.compute_mirror_image(im,new_refpt,vec=define_symvec(angle))
     im_rgb = cv2.merge((im,np.zeros_like(im).astype('uint8'),im_sym))
@@ -63,9 +69,10 @@ def test_angle_offset(im,angle,hoffset,refpt=np.array([100,100],dtype=np.uint16)
     cv2.putText(im_rgb, 'hoffset = ' + str(hoffset) + ' px', (np.shape(im)[1]-130, np.shape(im)[0]-10),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), lineType=cv2.LINE_AA)
     im_rgb_resized, fac = utils.customResize(im_rgb, 2)
-    cv2.imshow('im',im_rgb_resized)
-    while True:
-        if (cv2.waitKey(1) & 0xFF) == ord('q'):  # Hit `q` to exit
-            cv2.destroyWindow('im')
-            break
-            time.sleep(0.01)  # Slow down while loop to reduce CPU usage
+    return im_rgb_resized
+    # cv2.imshow('im',im_rgb_resized)
+    # while True:
+    #     if (cv2.waitKey(1) & 0xFF) == ord('q'):  # Hit `q` to exit
+    #         cv2.destroyWindow('im')
+    #         break
+    #         time.sleep(0.01)  # Slow down while loop to reduce CPU usage

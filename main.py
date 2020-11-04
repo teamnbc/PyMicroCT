@@ -6,7 +6,7 @@
 ############################################
 
 import sys, os
-from analysis import run_analysis, vertebral_profiles
+from analysis import run_analysis, vertebral_profiles, vertebral_angles
 import utilities as utils
 
 if __name__ == '__main__':
@@ -26,3 +26,5 @@ if __name__ == '__main__':
         run_analysis(session = list_dirs[-2], mouse = list_dirs[-1])
     if len(sys.argv)>1 and sys.argv[1]=='vert':
         vertebral_profiles(session = list_dirs[-2], mouse = list_dirs[-1])
+    if len(sys.argv)>1 and sys.argv[1]=='sym':
+        vertebral_angles(session = list_dirs[-2], mouse = list_dirs[-1])
