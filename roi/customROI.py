@@ -42,6 +42,7 @@ class DrawLine:
     '''Class used to draws lines to estimate mouse tilt'''
     def __init__(self, im, msg, fact):
         self.im = im  # Source image
+        self.th = 255  # Image threshold
         self.fact = fact  # Resize factor
         self.msg = msg  # Used as window handler
         self.pts = []
@@ -67,6 +68,7 @@ class DrawLine:
 
     def horizontal_line(self):
         cv2.namedWindow(self.msg)
+        cv2.createTrackbar('Threshold', self.msg, 255, 255, self.callback_trackbar)
         cv2.setMouseCallback(self.msg, self.callback_h)  # Bind to appropriate callback
         cv2.imshow(self.msg, self.im_resized)
         while True:
@@ -74,6 +76,36 @@ class DrawLine:
                 cv2.destroyWindow(self.msg)
                 break
             time.sleep(0.01)  # Slow down while loop to reduce CPU usage
+
+    def callback_trackbar(self,event):
+        '''
+        Callback function responding to trackbar
+        Updates working copy of image as a function of threshold
+        '''
+        self.th = cv2.getTrackbarPos('Threshold', self.msg)
+        if self.th == 0:
+            self.th = 1
+        # Update working copy of image
+        self.im_resized = self.apply_th().copy()
+        # Redraw points, lines and labels (duplicated from callback_h)
+        self.draw_pts_line()
+        if len(self.pts) > 1:
+            self.hangle = round(math.atan((self.pts[1][1] - self.pts[0][1]) /
+                            (self.pts[1][0] - self.pts[0][0])) * (180 / math.pi), 1)
+            xtext = int(math.floor((self.pts[0][0] + self.pts[1][0])/2))
+            ytext = int(math.floor((self.pts[0][1] + self.pts[1][1])/2))
+            cv2.putText(self.im_resized, str(self.hangle)+' deg', (xtext, ytext),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), lineType=cv2.LINE_AA)
+        cv2.imshow(self.msg, self.im_resized)
+
+    def apply_th(self):
+        # rescale image (0 -> th becomes 0 -> 255)
+        bw = cv2.cvtColor(self.im_copy, cv2.COLOR_RGB2GRAY)
+        ret, th_im = cv2.threshold(bw, self.th, 255, cv2.THRESH_TRUNC)
+        tmp = 255 * (th_im / np.max(th_im))
+        imout = tmp.astype('uint8').copy()
+        imout_rgb = cv2.cvtColor(imout,cv2.COLOR_GRAY2RGB)
+        return imout_rgb
 
     def callback_h(self, event, x, y, flags, params):
         '''
@@ -83,7 +115,7 @@ class DrawLine:
         if event == cv2.EVENT_LBUTTONDOWN and len(self.pts) < 2:
             self.closest = [x, y]
             self.pts.append([x, y])
-            self.im_resized = self.im_copy.copy()
+            self.im_resized = self.apply_th().copy()
         if event == cv2.EVENT_MBUTTONDOWN and (len(self.pts) >= 1):
             if(len(self.pts)>1):
                 diff = np.sum(np.power(np.tile([x, y], [len(self.pts), 1]) - np.array(self.pts),2),1)
@@ -95,14 +127,19 @@ class DrawLine:
                 self.pts = []
                 self.closest = None
                 self.closest_last = None
-            self.im_resized = self.im_copy.copy()
+            self.im_resized = self.apply_th().copy()
+            if(len(self.pts)==1):
+                cv2.line(self.im_resized, tuple(self.pts[0]), tuple([x, y]), (0, 255, 0), 2)
         if event == cv2.EVENT_MOUSEMOVE and (len(self.pts) > 0):
+            if(len(self.pts)==1):
+                self.im_resized = self.apply_th().copy()
+                cv2.line(self.im_resized, tuple(self.pts[0]), tuple([x, y]), (0, 255, 0), 2)
             # Find reference point closest to latest mouse position (= closest reference point)
             diff = np.sum(np.power(np.tile([x, y], [len(self.pts), 1]) - np.array(self.pts), 2), 1)
             self.closest = self.pts[diff.argmin()]
             # Update coordinates of closest reference point
             if self.closest_last != self.closest:
-                self.im_resized = self.im_copy.copy()
+                self.im_resized = self.apply_th().copy()
                 self.closest_last = self.closest
         self.draw_pts_line()
         if len(self.pts) > 1:
@@ -118,8 +155,10 @@ class DrawLine:
         self.pts = []
         self.closest = None
         self.closest_last = None
-        self.im_resized = self.im_copy.copy()
+        # self.im_resized = self.im_copy.copy()
+        self.im_resized = self.apply_th().copy()
         cv2.namedWindow(self.msg)
+        cv2.createTrackbar('Threshold', self.msg, 255, 255, self.callback_trackbar)
         cv2.setMouseCallback(self.msg, self.callback_v)  # Bind to appropriate callback
         cv2.imshow(self.msg, self.im_resized)
         while True:
@@ -136,7 +175,7 @@ class DrawLine:
         if event == cv2.EVENT_LBUTTONDOWN and len(self.pts) < 2:
             self.closest = [x, y]
             self.pts.append([x, y])
-            self.im_resized = self.im_copy.copy()
+            self.im_resized = self.apply_th().copy()
         if event == cv2.EVENT_MBUTTONDOWN and (len(self.pts) >= 1):
             if(len(self.pts)>1):
                 diff = np.sum(np.power(np.tile([x, y], [len(self.pts), 1]) - np.array(self.pts), 2), 1)
@@ -148,19 +187,19 @@ class DrawLine:
                 self.pts = []
                 self.closest = None
                 self.closest_last = None
-            self.im_resized = self.im_copy.copy()
+            self.im_resized = self.apply_th().copy()
             if(len(self.pts)==1):
                 cv2.line(self.im_resized, tuple(self.pts[0]), tuple([x, y]), (0, 255, 0), 2)
         if event == cv2.EVENT_MOUSEMOVE and (len(self.pts) > 0):
             if(len(self.pts)==1):
-                self.im_resized = self.im_copy.copy()
+                self.im_resized = self.apply_th().copy()
                 cv2.line(self.im_resized, tuple(self.pts[0]), tuple([x, y]), (0, 255, 0), 2)
             # Find reference point closest to latest mouse position (= closest reference point)
             diff = np.sum(np.power(np.tile([x, y], [len(self.pts), 1]) - np.array(self.pts), 2), 1)
             self.closest = self.pts[diff.argmin()]
             # Update coordinates of closest reference point
             if self.closest_last != self.closest:
-                self.im_resized = self.im_copy.copy()
+                self.im_resized = self.apply_th().copy()
                 self.closest_last = self.closest
         self.draw_pts_line()
         if len(self.pts) > 1:
@@ -177,6 +216,7 @@ class DrawPoly:
     """Class used to draw a polygon on rear and side projections"""
     def __init__(self, im, msg, fact):
         self.im = im  # The image on which the ROI is drawn
+        self.th = 255  # Image threshold
         self.fact = fact  # Scaling factor (so the user can point & click on larger image)
         self.msg = msg  # Window title
         self.immask = np.zeros(self.im.shape[0:2], np.uint8)  # Prepare mask
@@ -188,7 +228,6 @@ class DrawPoly:
         self.im_copy = self.im_resized.copy()
         self.mag_width = 20
 
-
     def drawpolygon(self):
 
         mag_left = [[self.mag_width, 0], [self.mag_width, 511]]
@@ -198,22 +237,11 @@ class DrawPoly:
         cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * i) for i in mag_right[0]]),
                  tuple([math.floor(self.resize_factor * i) for i in mag_right[1]]), (200, 200, 200), 1)
         cv2.imshow(self.msg, self.im_resized)  # Initialize window with proper title
+        cv2.createTrackbar('Threshold', self.msg, 255, 255, self.callback_trackbar)
         cv2.setMouseCallback(self.msg, self.callback)  # Invoke callback function to listen to mouse events
         while True:
             if self.something_changed:
-                if len(self.pts) > 1:
-                    for i in range(len(self.pts) - 1):  # Draw line
-                        cv2.line(self.im_resized, tuple(self.pts[i]), tuple(self.pts[i + 1]), (0, 255, 0), 2)
-                if len(self.pts) > 0:
-                    for i in range(len(self.pts)):  # Draw circle on each reference point
-                        cv2.circle(self.im_resized, tuple(self.pts[i]), 5, (0, 255, 0), -1)
-                    if self.closest is not None:
-                        cv2.circle(self.im_resized, tuple(self.closest), 20, (255, 255, 0), 3)
-                cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * i) for i in mag_left[0]]),
-                         tuple([math.floor(self.resize_factor * i) for i in mag_left[1]]), (200, 200, 200), 1)
-                cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * i) for i in mag_right[0]]),
-                         tuple([math.floor(self.resize_factor * i) for i in mag_right[1]]), (200, 200, 200), 1)
-                cv2.imshow(self.msg, self.im_resized)  # Update display
+                self.draw_pts_line(mag_left,mag_right)
                 self.something_changed = False
             if (cv2.waitKey(1) & 0xFF) == ord('q'):  # Hit `q` to exit
                 if len(self.pts) > 2:  # Update mask
@@ -227,6 +255,21 @@ class DrawPoly:
                 break  # Return to main function
             time.sleep(0.01)  # Slow down while loop to reduce CPU usage
 
+    def draw_pts_line(self,mag_left,mag_right):
+        if len(self.pts) > 1:
+            for i in range(len(self.pts) - 1):  # Draw line
+                cv2.line(self.im_resized, tuple(self.pts[i]), tuple(self.pts[i + 1]), (0, 255, 0), 2)
+        if len(self.pts) > 0:
+            for i in range(len(self.pts)):  # Draw circle on each reference point
+                cv2.circle(self.im_resized, tuple(self.pts[i]), 5, (0, 255, 0), -1)
+            if self.closest is not None:
+                cv2.circle(self.im_resized, tuple(self.closest), 20, (255, 255, 0), 3)
+        cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * i) for i in mag_left[0]]),
+                 tuple([math.floor(self.resize_factor * i) for i in mag_left[1]]), (200, 200, 200), 1)
+        cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * i) for i in mag_right[0]]),
+                 tuple([math.floor(self.resize_factor * i) for i in mag_right[1]]), (200, 200, 200), 1)
+        cv2.imshow(self.msg, self.im_resized)  # Update display
+
     def callback(self, event, x, y, flags, params):
         if event == cv2.EVENT_LBUTTONDOWN:
             if x < math.floor(self.resize_factor*self.mag_width):
@@ -234,14 +277,14 @@ class DrawPoly:
             if x > self.im_resized.shape[0] - math.floor(self.resize_factor*self.mag_width):
                 x = self.im_resized.shape[0]
             self.pts.append([x, y])
-            self.im_resized = self.im_copy.copy()
+            self.im_resized = self.apply_th().copy()
             self.something_changed = True
         if event == cv2.EVENT_MBUTTONDOWN and (len(self.pts) > 0):
             diff = np.sum(np.power(np.tile([x, y], [len(self.pts), 1]) - np.array(self.pts),2),1)
             del self.pts[diff.argmin()]
             diff = np.sum(np.power(np.tile([x, y], [len(self.pts), 1]) - np.array(self.pts), 2), 1)
             self.closest = self.pts[diff.argmin()]
-            self.im_resized = self.im_copy.copy()
+            self.im_resized = self.apply_th().copy()
             self.closest_last = self.closest
             self.something_changed = True
         if event == cv2.EVENT_MOUSEMOVE and (len(self.pts) > 0):
@@ -250,10 +293,33 @@ class DrawPoly:
             self.closest = self.pts[diff.argmin()]
             # Update coordinates of closest reference point
             if self.closest_last != self.closest:
-                self.im_resized = self.im_copy.copy()
+                self.im_resized = self.apply_th().copy()
                 self.closest_last = self.closest
                 self.something_changed = True
 
+    def apply_th(self):
+        # rescale image (0 -> th becomes 0 -> 255)
+        bw = cv2.cvtColor(self.im_copy, cv2.COLOR_RGB2GRAY)
+        ret, th_im = cv2.threshold(bw, self.th, 255, cv2.THRESH_TRUNC)
+        tmp = 255 * (th_im / np.max(th_im))
+        imout = tmp.astype('uint8').copy()
+        imout_rgb = cv2.cvtColor(imout,cv2.COLOR_GRAY2RGB)
+        return imout_rgb
+
+    def callback_trackbar(self,event):
+        '''
+        Callback function responding to trackbar
+        Updates working copy of image as a function of threshold
+        '''
+        self.th = cv2.getTrackbarPos('Threshold', self.msg)
+        if self.th == 0:
+            self.th = 1
+        # Update working copy of image
+        self.im_resized = self.apply_th().copy()
+        # Redraw points, lines and labels (duplicated from callback_h)
+        # self.draw_pts_line()
+        self.something_changed = True
+        # cv2.imshow(self.msg, self.im_resized)
 
 # class DrawL6:
 #     """Class used to draw a point at the level of L6 vertebra"""

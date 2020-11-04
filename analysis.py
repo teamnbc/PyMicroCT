@@ -1,6 +1,6 @@
 
 
-import os, cv2, dicom, roi, time, pickle
+import os, cv2, dicom, roi, time, pickle, sys
 import numpy as np
 import utilities as utils
 from datetime import date
@@ -78,7 +78,8 @@ def run_analysis(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', struct='S
     roi1.side.drawpolygon()  # Draw contour of spine on side view
     # cv2.imwrite(os.path.join(im_path, 'roi1_side_im.png'), roi1.side.im)
     # cv2.imwrite(os.path.join(im_path, 'roi1_side_immask.png'), roi1.side.immask)
-    print('Applying masks and preparing top view... ', end='')
+    # print('Applying masks and preparing top view... ')
+    sys.stdout.write('Applying masks and preparing top view... ')
     # Apply rear mask on original 3d array
     mask_rear = np.broadcast_to(roi1.rear.immask == 0, arr3d_32.shape)
     minval = np.ma.array(arr3d_32, mask=mask_rear).min()  # min pixel val within selected region
@@ -206,7 +207,8 @@ def run_analysis(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', struct='S
     with open(os.path.join(analysis_path, 'params.txt'), 'w') as outfile:
         outfile.write(os.path.join(datapath, struct, session, mouse) + "\n")
         outfile.write("Date = " + today.strftime("%Y-%m-%d") + "\n")
-        outfile.write("Angle = " + str(roi1.tilt.angle) + " deg\n")
+        outfile.write("Horizontal tilt angle = " + str(roi1.tilt.hangle) + " deg\n")
+        outfile.write("Vertical tilt angle = " + str(roi1.tilt.vangle) + " deg\n")
         outfile.write("Voxel size = " + str(tuple([int(round(1000 * x)) for x in voxel_spacing])) + " um\n")
         outfile.write("roi2.top.resize_factor = " + str(roi2.top.resize_factor) + "\n")
         outfile.write("roi3.side.resize_factor = " + str(roi3.side.resize_factor) + "\n")
@@ -291,7 +293,8 @@ def vertebral_profiles(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', str
     v_analysis_path = os.path.join(im_path, 'vertebrae')  # Where images will be saved
     if not os.path.exists(v_analysis_path):
         os.makedirs(v_analysis_path)
-    print('Computing oblique projections through vertebrae... ', end='')
+    # print('Computing oblique projections through vertebrae... ', end='')
+    sys.stdout.write('Computing oblique projections through vertebrae... ')
     N_V_annotated = len(roi3.side.V_ID)  # Number of vertebrae annotated
     for k in range(N_V_annotated):
         TV1 = pts_side_arr_sorted[k + 1] - pts_side_arr_sorted[k]
