@@ -1,5 +1,7 @@
 # PyMicroCT
 
+![alt text](https://github.com/ghyomm/PyMicroCT/blob/master/pics/Repo%20card.png)
+
 PyMicroCT is a set of Python classes and functions designed to analyze microCT scans of the mouse spine. It uses opencv and numpy to
 draw and apply user-defined masks, and provides annotation functions to reconstruct the 3D axis of the spine, label individual vertebrae and compute vertebrae cross-sections.
 
