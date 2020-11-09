@@ -305,36 +305,57 @@ def vertebral_profiles(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', str
         v_im3 = np.zeros((71, 71))
         v_im4 = np.zeros((71, 71))
         v_im5 = np.zeros((71, 71))
+        v_im6 = np.zeros((71, 71))
+        v_im7 = np.zeros((71, 71))
         for i in np.linspace(-35,35,num=71):
             for j in np.linspace(-35,35,num=71):
-                coord = np.round(ori - (2*vec) + i * up + j * vp).astype('int16')
+                #
+                coord = np.round(ori - (3*vec) + i*up + j*vp).astype('int16')
                 if not np.any((coord >= 512) | (coord <= 0)):
                     v_im1[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
                 else:
                     v_im1[int(i + 35), int(j + 35)] = 0
-                coord = np.round(ori - vec + i*up + j*vp).astype('int16')
+                #
+                coord = np.round(ori - (2*vec) + i*up + j*vp).astype('int16')
                 if not np.any((coord >= 512) | (coord <= 0)):
                     v_im2[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
                 else:
                     v_im2[int(i + 35), int(j + 35)] = 0
-                coord = np.round(ori + i*up + j*vp).astype('int16')
+                #
+                coord = np.round(ori - vec + i*up + j*vp).astype('int16')
                 if not np.any((coord >= 512) | (coord <= 0)):
                     v_im3[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
                 else:
                     v_im3[int(i + 35), int(j + 35)] = 0
-                coord = np.round(ori + vec + i*up + j*vp).astype('int16')
+                #
+                coord = np.round(ori + i*up + j*vp).astype('int16')
                 if not np.any((coord >= 512) | (coord <= 0)):
                     v_im4[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
                 else:
                     v_im4[int(i + 35), int(j + 35)] = 0
-                coord = np.round(ori + (2*vec) + i * up + j * vp).astype('int16')
+                #
+                coord = np.round(ori + vec + i*up + j*vp).astype('int16')
                 if not np.any((coord >= 512) | (coord <= 0)):
                     v_im5[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
                 else:
                     v_im5[int(i + 35), int(j + 35)] = 0
+                #
+                coord = np.round(ori + (2*vec) + i * up + j * vp).astype('int16')
+                if not np.any((coord >= 512) | (coord <= 0)):
+                    v_im6[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
+                else:
+                    v_im6[int(i + 35), int(j + 35)] = 0
+                #
+                coord = np.round(ori - (3*vec) + i*up + j*vp).astype('int16')
+                if not np.any((coord >= 512) | (coord <= 0)):
+                    v_im7[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
+                else:
+                    v_im7[int(i + 35), int(j + 35)] = 0
+                #
         v_im = np.amax(np.array([v_im1, v_im2, v_im3, v_im4, v_im5]), axis=0)
         v_im_resized, resize_factor = utils.customResize(v_im, 3)
-        ret, v_im_bin = cv2.threshold(v_im_resized, 100, 255, cv2.THRESH_BINARY)
+        v_im_resized = utils.imRescale2uint8(v_im_resized)
+        ret, v_im_bin = cv2.threshold(v_im_resized, 130, 255, cv2.THRESH_BINARY)
         # v_im_sharpened = cv2.filter2D(v_im, -1, kernel_sharpening)
         # v_im_resized, resize_factor = utils.customResize(v_im, 3)
         # v_im_resized = utils.imRescale2uint8(utils.imLevels(v_im_resized, 70, 220))
@@ -368,8 +389,12 @@ def vertebral_angles(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', struc
         hoffset_range = np.array([-20,21],dtype=np.int16)
         im_out = cyutils.compute_sym_axis(im,refpt,angle_range,hoffset_range)
         max_coord = np.where(im_out == np.amax(im_out))
-        best_angle = int(max_coord[0] + angle_range[0])
-        best_offset = int(max_coord[1] + hoffset_range[0])
+        if len(max_coord[0]>1) or len(len(max_coord[1]>1)):
+            best_angle = int(max_coord[0][0] + angle_range[0])
+            best_offset = int(max_coord[1][0] + hoffset_range[0])
+        else:
+            best_angle = int(max_coord[0] + angle_range[0])
+            best_offset = int(max_coord[1] + hoffset_range[0])
         imsym = sym.compute_angle_and_offset(im,best_angle,best_offset)
         im_filename = os.path.split(imfile)[-1]
         index = im_filename.split('_')[0]
