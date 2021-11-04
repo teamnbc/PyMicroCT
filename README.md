@@ -2,8 +2,7 @@
 
 ![alt text](https://github.com/ghyomm/PyMicroCT/blob/master/pics/Repo%20card.png)
 
-PyMicroCT is a set of Python classes and functions designed to analyze microCT scans of the mouse spine. It uses opencv and numpy to
-draw and apply user-defined masks, and provides annotation functions to reconstruct the 3D axis of the spine, label individual vertebrae and compute vertebrae cross-sections.
+PyMicroCT is a set of Python classes and functions designed to analyze microCT scans of the mouse spine. It uses opencv and numpy to draw and apply user-defined masks, and provides annotation functions to reconstruct the 3D axis of the spine, label individual vertebrae and compute vertebrae cross-sections.
 
 ## Pre-Prequisites
 
@@ -11,11 +10,11 @@ draw and apply user-defined masks, and provides annotation functions to reconstr
     pip3 install pydicom
     pip3 install scipy
     pip3 install pandas
+    sudo apt-get install python3-jupyter-core python3-ipykernel python-ipython
 
-    apt-get install python3-jupyter-core python3-ipykernel python-ipython
-
-Warning for packages pydicom, pygmentize, iptest, iptest3, ipython, ipython3, jupyter, jupyter-migrate, jupyter-troubleshoot, jupyter-kernel, jupyter-kernelspec and jupyter-run:
-WARNING: The script package_name is installed in '/users/nbc/gdugue/.local/bin' which is not on PATH.Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+> Warning for packages pydicom, pygmentize, iptest, iptest3, ipython, ipython3, jupyter, jupyter-migrate, jupyter-troubleshoot, jupyter-kernel, jupyter-kernelspec and jupyter-run:
+>
+>*WARNING: The script package_name is installed in '/users/nbc/gdugue/.local/bin' which is not on PATH.Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.*
 
 
 ## Steps of the analysis
