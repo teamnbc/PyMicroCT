@@ -9,6 +9,14 @@ draw and apply user-defined masks, and provides annotation functions to reconstr
 
     pip3 install opencv-python
     pip3 install pydicom
+    pip3 install scipy
+    pip3 install pandas
+
+    apt-get install python3-jupyter-core python3-ipykernel python-ipython
+
+Warning for packages pydicom, pygmentize, iptest, iptest3, ipython, ipython3, jupyter, jupyter-migrate, jupyter-troubleshoot, jupyter-kernel, jupyter-kernelspec and jupyter-run:
+WARNING: The script package_name is installed in '/users/nbc/gdugue/.local/bin' which is not on PATH.Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+
 
 ## Steps of the analysis
 1. A stack of microCT images (Dicom files) is loaded using Pydicom and converted into a 3D numpy array.

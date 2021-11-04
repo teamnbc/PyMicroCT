@@ -23,7 +23,7 @@ if __name__ == '__main__':
     if list_dirs[-3]!='SPINE':
         sys.exit('Not in righ folder.')
     if len(sys.argv)==1 or sys.argv[1]=='rois':
-        run_analysis(session = list_dirs[-2], mouse = list_dirs[-1])
+        run_analysis(session = list_dirs[-2], mouse = list_dirs[-1], datapath='/mnt/data/DATA_MICROCT', struct='SPINE')
     if len(sys.argv)>1 and sys.argv[1]=='vert':
         vertebral_profiles(session = list_dirs[-2], mouse = list_dirs[-1])
     if len(sys.argv)>1 and sys.argv[1]=='sym':
