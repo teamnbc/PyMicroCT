@@ -32,8 +32,8 @@ arr3d_8/32_masked2: top (spline) mask applied to arr3d_8/32_masked1.
 arr3d_8/32_masked3: side mask applied to arr3d_32_masked2.
 '''
 
-def run_analysis(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', struct='SPINE'):
-    # datapath='/home/ghyomm/DATA_MICROCT'
+def run_analysis(session, mouse, datapath='/mnt/data/DATA_MICROCT', struct='SPINE'):
+    # datapath='/mnt/data/DATA_MICROCT'
     # struct='SPINE'
     # session='20200202_SPINE'
     # mouse='BY908_29_Colonne_114959'
