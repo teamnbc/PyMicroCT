@@ -1,4 +1,4 @@
-import cv2, os, math, operator, sys
+import cv2, os, math, operator, sys, time
 import numpy as np
 
 def imRescale2uint8(im):
@@ -19,6 +19,14 @@ def imLevels(im,low,high):
 
 def customResize(im,factor):
     '''Resize image using non integer factor'''
-    imResized=cv2.resize(im, tuple(map(math.floor, tuple(factor * x for x in im.shape[0:2]))), interpolation=cv2.INTER_AREA)
-    truefactor=tuple(map(operator.truediv, imResized.shape, im.shape))[0]
+    imResized=cv2.resize(im, tuple(map(math.floor, tuple(factor * x for x in im.shape[0:2][::-1]))), interpolation=cv2.INTER_AREA)
+    truefactor=tuple(map(operator.truediv, imResized.shape[0:2], im.shape[0:2]))[0]
     return imResized, truefactor
+
+def imShowMe(im,msg='image'):
+    cv2.imshow(msg, im)
+    while True:
+        if (cv2.waitKey(1) & 0xFF) == ord('q'):  # Hit `q` to exit
+            cv2.destroyWindow(msg)
+            break
+        time.sleep(0.01)  # Slow down while loop to reduce CPU usage

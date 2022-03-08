@@ -215,7 +215,7 @@ class DrawLine:
 class DrawPoly:
     """Class used to draw a polygon on rear and side projections"""
     def __init__(self, im, msg, fact):
-        self.im = im  # The image on which the ROI is drawn
+        self.im = im  # The original image on which the ROI is drawn (columns = width, rows = height).
         self.th = 255  # Image threshold
         self.fact = fact  # Scaling factor (so the user can point & click on larger image)
         self.msg = msg  # Window title
@@ -224,18 +224,19 @@ class DrawPoly:
         self.something_changed = True
         self.closest = None
         self.closest_last = None
-        self.im_resized, self.resize_factor = utils.customResize(self.im, self.fact)
+        self.im_resized, self.resize_factor = utils.customResize(self.im, self.fact)  # (rows = width, columns = height).
         self.im_copy = self.im_resized.copy()
         self.mag_width = 20
 
     def drawpolygon(self):
-
-        mag_left = [[self.mag_width, 0], [self.mag_width, 511]]
-        mag_right = [[511 - self.mag_width, 0], [511 - self.mag_width, 511]]
+        maxpix_h = self.im.shape[1]  # Along width of original image.
+        maxpix_v = self.im.shape[0]  # Along height of original image.
+        mag_left = [[self.mag_width, 0], [self.mag_width, maxpix_v]]
+        mag_right = [[maxpix_h - self.mag_width, 0], [maxpix_h - self.mag_width, maxpix_v]]
         cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * i) for i in mag_left[0]]),
-                 tuple([math.floor(self.resize_factor * i) for i in mag_left[1]]), (200, 200, 200), 1)
+                 tuple([math.floor(self.resize_factor * i) for i in mag_left[1]]), (255, 0, 0), 1)
         cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * i) for i in mag_right[0]]),
-                 tuple([math.floor(self.resize_factor * i) for i in mag_right[1]]), (200, 200, 200), 1)
+                 tuple([math.floor(self.resize_factor * i) for i in mag_right[1]]), (255, 255, 0), 1)
         cv2.imshow(self.msg, self.im_resized)  # Initialize window with proper title
         cv2.createTrackbar('Threshold', self.msg, 255, 255, self.callback_trackbar)
         cv2.setMouseCallback(self.msg, self.callback)  # Invoke callback function to listen to mouse events
@@ -265,17 +266,17 @@ class DrawPoly:
             if self.closest is not None:
                 cv2.circle(self.im_resized, tuple(self.closest), 20, (255, 255, 0), 3)
         cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * i) for i in mag_left[0]]),
-                 tuple([math.floor(self.resize_factor * i) for i in mag_left[1]]), (200, 200, 200), 1)
+                 tuple([math.floor(self.resize_factor * i) for i in mag_left[1]]), (255, 0, 0), 1)
         cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * i) for i in mag_right[0]]),
-                 tuple([math.floor(self.resize_factor * i) for i in mag_right[1]]), (200, 200, 200), 1)
+                 tuple([math.floor(self.resize_factor * i) for i in mag_right[1]]), (255, 255, 0), 1)
         cv2.imshow(self.msg, self.im_resized)  # Update display
 
     def callback(self, event, x, y, flags, params):
         if event == cv2.EVENT_LBUTTONDOWN:
             if x < math.floor(self.resize_factor*self.mag_width):
                 x = 0
-            if x > self.im_resized.shape[0] - math.floor(self.resize_factor*self.mag_width):
-                x = self.im_resized.shape[0]
+            if x > self.im_resized.shape[1] - math.floor(self.resize_factor*self.mag_width):
+                x = self.im_resized.shape[1] - 1
             self.pts.append([x, y])
             self.im_resized = self.apply_th().copy()
             self.something_changed = True
@@ -385,7 +386,7 @@ class DrawSpineAxis:
                 cv2.circle(self.im_resized, tuple(self.pts), 5, (0, 255, 0), -1)
                 cv2.circle(self.im_resized, tuple(self.pts), 50, (0, 255, 0), 2)
                 cv2.line(self.im_resized, tuple([0, self.pts[1]]),
-                    tuple([math.floor(self.resize_factor * 511), self.pts[1]]),
+                    tuple([math.floor(self.resize_factor * (self.im.shape[0]-1)), self.pts[1]]),
                     (0, 255, 0), 2)  # Line showing position of L6
                 cv2.putText(self.im_resized, "Position of L6 vertebra = " + str(self.L6_pos),
                     (20, self.pts[1] - 20),
@@ -423,8 +424,8 @@ class DrawSpineAxis:
         """
         self.first_call = True # Because was used by DrawL6 just before.
         self.pts = [] # Resetting self.pts (used by DrawL6 just before).
-        mag_top = [[0, self.mag_width], [511, self.mag_width]]
-        mag_bottom = [[0, 511 - self.mag_width], [511, 511 - self.mag_width]]
+        mag_top = [[0, self.mag_width], [self.im.shape[1]-1, self.mag_width]]
+        mag_bottom = [[0, self.im.shape[0]-1 - self.mag_width], [self.im.shape[1]-1, self.im.shape[0]-1 - self.mag_width]]
         cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * i) for i in mag_top[0]]),
                  tuple([math.floor(self.resize_factor * i) for i in mag_top[1]]), (200, 200, 200), 1)
         cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * i) for i in mag_bottom[0]]),
@@ -459,7 +460,7 @@ class DrawSpineAxis:
                         x, y = np.array(pts_arr_sorted)[:, 0], np.array(pts_arr_sorted)[:, 1]
                         f = interp1d(y, x, kind='cubic')  # Compute spline function
                         # Goal: describe spline with 100 points (npts = 100).
-                        npts = math.floor(np.ptp(y) * 100 / (512 * int(self.resize_factor)))
+                        npts = math.floor(np.ptp(y) * 100 / (self.im.shape[0] * int(self.resize_factor)))
                         # Evenly spaced points along y axis
                         ynew = np.linspace(np.min(y), np.max(y), num=npts, endpoint=True)
                         ptsnew = np.vstack((np.array(f(ynew)), ynew)).T  # Coordinates of spline points
@@ -481,15 +482,15 @@ class DrawSpineAxis:
                         # Apply scaling factor such that D (distance between side points) decreases when moving toward the tail
                         for i in range(pts_arr_sorted.shape[0]):
                             # Here: D = 30 at top of image and D = 10 at bottom of image
-                            side_a[i, :] = pts_arr_sorted[i] + (10 - (5 / (int(self.resize_factor * 511))) * pts_arr_sorted[i, 1]) * dva[i]
-                            side_b[i, :] = pts_arr_sorted[i] + (10 - (5 / (int(self.resize_factor * 511))) * pts_arr_sorted[i, 1]) * dvb[i]
+                            side_a[i, :] = pts_arr_sorted[i] + (10 - (5 / (int(self.resize_factor * (self.im.shape[0]-1)))) * pts_arr_sorted[i, 1]) * dva[i]
+                            side_b[i, :] = pts_arr_sorted[i] + (10 - (5 / (int(self.resize_factor * (self.im.shape[0]-1)))) * pts_arr_sorted[i, 1]) * dvb[i]
                         side_a_int, side_b_int = np.floor(side_a).astype('int16'), np.floor(side_b).astype('int16')  # For plotting only
                         for i in range(dv.shape[0]):
                             cv2.line(self.im_resized, tuple(side_a_int[i]), tuple(side_b_int[i]), (255, 0, 0), 1)
                         # Compute splines for right side points (same method as above)
                         x, y = np.array(side_a)[:, 0], np.array(side_a)[:, 1]
                         f = interp1d(y, x, kind='cubic')
-                        npts = math.floor(np.ptp(y) * 100 / (512 * int(self.resize_factor)))
+                        npts = math.floor(np.ptp(y) * 100 / (self.im.shape[0] * int(self.resize_factor)))
                         ynew = np.linspace(np.min(y), np.max(y), num=npts, endpoint=True)
                         side_a_new = np.vstack((np.array(f(ynew)), ynew)).T
                         side_a_new_int = np.floor(side_a_new).astype('int16')
@@ -499,7 +500,7 @@ class DrawSpineAxis:
                         # Compute spline for left side points
                         x, y = np.array(side_b)[:, 0], np.array(side_b)[:, 1]
                         f = interp1d(y, x, kind='cubic')
-                        npts = math.floor(np.ptp(y) * 100 / (512 * int(self.resize_factor)))
+                        npts = math.floor(np.ptp(y) * 100 / (self.im.shape[0] * int(self.resize_factor)))
                         ynew = np.linspace(np.min(y), np.max(y), num=npts, endpoint=True)
                         side_b_new = np.vstack((np.array(f(ynew)), ynew)).T
                         side_b_new_int = np.floor(side_b_new).astype('int16')
@@ -523,7 +524,7 @@ class DrawSpineAxis:
                         x, y = np.array(pts_arr_sorted)[:, 0], np.array(pts_arr_sorted)[:, 1]
                         f = interp1d(y, x, kind='cubic')  # Compute spline function
                         # Goal: describe spline with 100 points (npts = 100).
-                        npts = math.floor(np.ptp(y) * 100 / 512)
+                        npts = math.floor(np.ptp(y) * 100 / self.im.shape[0])
                         # Evenly spaced points along y axis
                         ynew = np.linspace(np.min(y), np.max(y), num=npts, endpoint=True)
                         ptsnew = np.vstack((np.array(f(ynew)), ynew)).T  # Coordinates of spline points
@@ -540,12 +541,12 @@ class DrawSpineAxis:
                         side_a, side_b = dva.copy(), dvb.copy()
                         # Apply scaling factor such that D (distance between side points) decreases when moving toward the tail
                         for i in range(pts_arr_sorted.shape[0]):
-                            side_a[i, :] = pts_arr_sorted[i] + (8 - (8 / 511) * pts_arr_sorted[i, 1]) * dva[i]
-                            side_b[i, :] = pts_arr_sorted[i] + (8 - (8 / 511) * pts_arr_sorted[i, 1]) * dvb[i]
+                            side_a[i, :] = pts_arr_sorted[i] + (8 - (8 / (self.im.shape[0]-1) ) * pts_arr_sorted[i, 1]) * dva[i]
+                            side_b[i, :] = pts_arr_sorted[i] + (8 - (8 / (self.im.shape[0]-1) ) * pts_arr_sorted[i, 1]) * dvb[i]
                         # Compute splines for right side points (same method as above)
                         x, y = np.array(side_a)[:, 0], np.array(side_a)[:, 1]
                         f = interp1d(y, x, kind='cubic')
-                        npts = math.floor(np.ptp(y) * 100 / 512)
+                        npts = math.floor(np.ptp(y) * 100 / self.im.shape[0])
                         ynew = np.linspace(np.min(y), np.max(y), num=npts, endpoint=True)
                         side_a_new = np.vstack((np.array(f(ynew)), ynew)).T
                         side_a_new_int = np.floor(side_a_new).astype('int16')
@@ -555,7 +556,7 @@ class DrawSpineAxis:
                         # Compute spline for left side points
                         x, y = np.array(side_b)[:, 0], np.array(side_b)[:, 1]
                         f = interp1d(y, x, kind='cubic')
-                        npts = math.floor(np.ptp(y) * 100 / 512)
+                        npts = math.floor(np.ptp(y) * 100 / self.im.shape[0])
                         ynew = np.linspace(np.min(y), np.max(y), num=npts, endpoint=True)
                         side_b_new = np.vstack((np.array(f(ynew)), ynew)).T
                         side_b_new_int = np.floor(side_b_new).astype('int16')
@@ -567,10 +568,10 @@ class DrawSpineAxis:
                         # Find points of left and right splines which are outside image
                         side_a_new_int_sorted = side_a_new_int[np.argsort(side_a_new_int[:, 1])]
                         side_a_new_int_sorted[side_a_new_int_sorted < 0] = 0
-                        side_a_new_int_sorted[side_a_new_int_sorted > 511] = 511
+                        side_a_new_int_sorted[side_a_new_int_sorted > (self.im.shape[0]-1) ] = self.im.shape[0]-1
                         side_b_new_int_sorted = side_b_new_int[np.argsort(-side_b_new_int[:, 1])]
                         side_b_new_int_sorted[side_b_new_int_sorted < 0] = 0
-                        side_b_new_int_sorted[side_b_new_int_sorted > 511] = 511
+                        side_b_new_int_sorted[side_b_new_int_sorted > (self.im.shape[0]-1) ] = self.im.shape[0]-1
                         ll = np.vstack((side_a_new_int_sorted,side_b_new_int_sorted)).tolist()
                         cv2.fillPoly(self.immask, np.array([ll]), (255, 255, 255), 1)
                 else:
@@ -642,7 +643,7 @@ class DrawVertebraeLimits:
     def DrawVertebrae(self):
         """Draw limits of vertebrae on side projection"""
         cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * self.L6), 0]),
-                 tuple([math.floor(self.resize_factor * self.L6), math.floor(self.resize_factor * 511)]), (0, 0, 255), 1)
+                 tuple([math.floor(self.resize_factor * self.L6), math.floor(self.resize_factor * (self.im.shape[0]-1) )]), (0, 0, 255), 1)
         cv2.putText(self.im_resized, "L6", (math.floor(self.resize_factor * self.L6), math.floor(self.resize_factor * 20)),
                     cv2.FONT_HERSHEY_SIMPLEX, 2.0, (0, 0, 255), lineType=cv2.LINE_AA)
         cv2.imshow(self.msg, self.im_resized)  # Initialize window with proper title
@@ -652,7 +653,7 @@ class DrawVertebraeLimits:
                 # First draw line showing position of L6
                 cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * self.L6), 0]),
                          tuple(
-                             [math.floor(self.resize_factor * self.L6), math.floor(self.resize_factor * 511)]),
+                             [math.floor(self.resize_factor * self.L6), math.floor(self.resize_factor * (self.im.shape[0]-1))]),
                          (0, 0, 255), 1)
                 cv2.putText(self.im_resized, "L6",
                             (math.floor(self.resize_factor * self.L6), math.floor(self.resize_factor * 20)),

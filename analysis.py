@@ -1,6 +1,11 @@
 
+'''
+Main PyMicroCT functions are here.
+'''
 
-import os, cv2, dicom, roi, time, pickle, sys, glob
+# Dependencies:
+
+import os, cv2, dicom, pydicom, roi, time, pickle, sys, glob
 import numpy as np
 import utilities as utils
 from datetime import date
@@ -32,11 +37,12 @@ arr3d_8/32_masked2: top (spline) mask applied to arr3d_8/32_masked1.
 arr3d_8/32_masked3: side mask applied to arr3d_32_masked2.
 '''
 
-def run_analysis(session, mouse, datapath='/mnt/data/DATA_MICROCT', struct='SPINE'):
-    # datapath='/mnt/data/DATA_MICROCT'
+def run_analysis(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='SPINE'):
+    # Debug:
+    # datapath='/mnt/data/DATA_SSPO'
     # struct='SPINE'
-    # session='20200202_SPINE'
-    # mouse='BY908_29_Colonne_114959'
+    # session='example_session_SPINE'
+    # mouse='example_mouse_Colonne'
     #
     ''' Step 1: define paths '''
     analysis_path = os.path.join(datapath, struct, session, mouse, 'analysis')
@@ -49,8 +55,30 @@ def run_analysis(session, mouse, datapath='/mnt/data/DATA_MICROCT', struct='SPIN
     src_dir = os.path.join(datapath, struct, session, mouse, 'data')
 
     ''' Step 2: obtain 3D array and voxel info using all dcm files in directory '''
-    arr3d_32, voxel_spacing = dicom.load_stack(src_dir)  # 3D array in float 32
+    dcm_files = glob.glob(src_dir + '/*.dcm')
+    ndcm = len(dcm_files)
+    if ndcm == 0:
+        sys.exit('No .dcm file in ' + src_dir + '.')
+    if ndcm > 1:
+        # Tested with a series of dcm images obtained from Montrouge.
+        # In this case, the 3D stack has the following shape: arr3d_32.shape = (512,512,512).
+        # Debug:
+        # src_dir = '/mnt/data/DATA_MICROCT/SPINE/20201014_SPINE/CN723_40_Colonne_111610/data'
+        arr3d_32, voxel_spacing = dicom.load_stack(src_dir)  # 3D array in float 32
+    if ndcm == 1:  # One stack of dcm images.
+        # Tested with dcm stack exported via Amide from data obtained using an Albira system (Bruker).
+        # In this case, the 3D stack has the following shape: arr3d_32.shape = (547,580,580).
+        # Where 547 is the number of slices along the antero-posterior axis.
+        # Debug:
+        src_dir = '/mnt/data/DATA_SSPO/SPINE/example_session_SPINE/example_mouse_Colonne/data/export_windows.dcm'
+        dcm_data = pydicom.dcmread(dcm_files[0])
+        voxel_spacing=(float(dcm_data.SliceThickness),float(dcm_data.PixelSpacing[0]),float(dcm_data.PixelSpacing[1]))  # voxel size in mm.
+        arr = dcm_data.pixel_array
+        arr3d_32 = np.float32(arr)
+
     arr3d_8 = utils.imRescale2uint8(arr3d_32)  # Scale [min max] to [0 255] (i.e. convert to 8 bit)
+    nslices = arr3d_8.shape[0]  # Keep track of number of slices in stack.
+
     # Below is just for illustration purposes (saving individual dicom images)
     # for i in range(512):
     #     im = arr3d_8[i,:,:]
@@ -59,12 +87,11 @@ def run_analysis(session, mouse, datapath='/mnt/data/DATA_MICROCT', struct='SPIN
     #     cv2.imwrite('/home/ghyomm/Desktop/tmp/' + "%03d" % i + '.png',im)
 
     ''' Step 3-5: draw horizontal line '''
-    im_rear = np.amax(arr3d_8, axis=0)  # Projection (rear view)
+    im_rear = np.amax(arr3d_8, axis=0)  # Projection along antero-posterior axis (rear view).
     im_rear_rgb = cv2.merge(((im_rear,) * 3))  # Convert to RGB
     im_rear_rgb_copy = im_rear_rgb.copy()  # Copy used for drawing
     im_side = np.flip(np.transpose(np.amax(arr3d_8, axis=2)), axis=1)  # Projection (side view)
     im_side_rgb = cv2.merge(((im_side,) * 3))  # Convert to RGB
-    # Then initialize class custROI1 (see customROI.py)
     roi1 = roi.CustROI1(imsrc_horiz=im_rear_rgb,
                     msg_horiz='Draw mouse\'s horizontal line (press \'q\' to escape)', fact_horiz=3,
                     imsrc_rear=im_rear_rgb_copy,
@@ -76,11 +103,11 @@ def run_analysis(session, mouse, datapath='/mnt/data/DATA_MICROCT', struct='SPIN
     roi1.tilt.vertical_line()
     cv2.imwrite(os.path.join(im_path, 'roi1_vert_im.png'), roi1.tilt.im_resized)
     roi1.rear.drawpolygon()  # Draw mouse's contour on rear view to define rear mask
-    # cv2.imwrite(os.path.join(im_path, 'roi1_rear_im.png'), roi1.rear.im)
-    # cv2.imwrite(os.path.join(im_path, 'roi1_rear_immask.png'), roi1.rear.immask)
+    cv2.imwrite(os.path.join(im_path, 'roi1_rear_im.png'), roi1.rear.im)
+    cv2.imwrite(os.path.join(im_path, 'roi1_rear_immask.png'), roi1.rear.immask)
     roi1.side.drawpolygon()  # Draw contour of spine on side view
-    # cv2.imwrite(os.path.join(im_path, 'roi1_side_im.png'), roi1.side.im)
-    # cv2.imwrite(os.path.join(im_path, 'roi1_side_immask.png'), roi1.side.immask)
+    cv2.imwrite(os.path.join(im_path, 'roi1_side_im.png'), roi1.side.im)
+    cv2.imwrite(os.path.join(im_path, 'roi1_side_immask.png'), roi1.side.immask)
     # print('Applying masks and preparing top view... ')
     sys.stdout.write('Applying masks and preparing top view... ')
     # Apply rear mask on original 3d array
@@ -138,7 +165,7 @@ def run_analysis(session, mouse, datapath='/mnt/data/DATA_MICROCT', struct='SPIN
     im_side_through_spine_sharpened_rgb = cv2.merge(((im_side_through_spine_sharpened,) * 3))
     roi3 = roi.CustROI3(imsrc_side=im_side_through_spine_sharpened_rgb,
                     msg_side='Draw limits of vertebrae (press \'q\' to escape)', fact_side=3,
-                    L6_position=512-roi2.top.L6_pos)
+                    L6_position=im_side_through_spine_sharpened_rgb.shape[1]-1-roi2.top.L6_pos)
     roi3.side.DrawVertebrae()
     cv2.imwrite(os.path.join(im_path, 'im_side_through_spine_annotated.png'), roi3.side.im_resized)
     # NOTE: reference points are in roi3.side.pts and still in im * resize_factor coordinates
@@ -223,7 +250,12 @@ def run_analysis(session, mouse, datapath='/mnt/data/DATA_MICROCT', struct='SPIN
         with open(os.path.join(roi_path, roi_name + '.pickle'), 'wb') as f:
             pickle.dump(locals()[roi_name], f)
 
-def vertebral_profiles(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', struct='SPINE'):
+def vertebral_profiles(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='SPINE'):
+    # Debug:
+    # datapath='/mnt/data/DATA_SSPO'
+    # struct='SPINE'
+    # session='example_session_SPINE'
+    # mouse='example_mouse_Colonne'
 
     ''' Step 1: define paths '''
     analysis_path = os.path.join(datapath, struct, session, mouse, 'analysis')
@@ -237,8 +269,18 @@ def vertebral_profiles(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', str
     roi3 = pickle.load(open(os.path.join(analysis_path, 'rois', 'roi3.pickle'),'rb'))
 
     '''Step 3: regenerate arrays from data (see run_analysis function)'''
-    arr3d_32, voxel_spacing = dicom.load_stack(src_dir)
-    arr3d_8 = utils.imRescale2uint8(arr3d_32)
+    dcm_files = glob.glob(src_dir + '/*.dcm')
+    ndcm = len(dcm_files)
+    if ndcm == 0:
+        sys.exit('No .dcm file in ' + src_dir + '.')
+    if ndcm > 1:
+        arr3d_32, voxel_spacing = dicom.load_stack(src_dir)  # 3D array in float 32
+    if ndcm == 1:  # One stack of dcm images.
+        dcm_data = pydicom.dcmread(dcm_files[0])
+        voxel_spacing=(float(dcm_data.SliceThickness),float(dcm_data.PixelSpacing[0]),float(dcm_data.PixelSpacing[1]))  # voxel size in mm.
+        arr = dcm_data.pixel_array
+        arr3d_32 = np.float32(arr)
+    arr3d_8 = utils.imRescale2uint8(arr3d_32)  # Scale [min max] to [0 255] (i.e. convert to 8 bit)
     mask_rear = np.broadcast_to(roi1.rear.immask == 0, arr3d_32.shape)
     minval = np.ma.array(arr3d_32, mask=mask_rear).min()  # min pixel val within selected region
     arr3d_32_masked1 = np.ma.array(arr3d_32, mask=mask_rear, fill_value=minval).filled()
