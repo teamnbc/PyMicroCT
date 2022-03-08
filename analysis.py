@@ -180,11 +180,11 @@ def run_analysis(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='SPINE')
     # Define coordinates of reference points drawn on side projection (vertebrae limits)
     pts_side_arr = np.array(roi3.side.pts)
     pts_side_arr_sorted = pts_side_arr[np.argsort(pts_side_arr[:, 0])]
-    pts_side_arr_sorted[:, 1] = -pts_side_arr_sorted[:, 1] + 512 * roi3.side.resize_factor
+    pts_side_arr_sorted[:, 1] = -pts_side_arr_sorted[:, 1] + arr3d_8.shape[1] * roi3.side.resize_factor
     # in pts_side_arr_sorted, x is ascending caudo-rostral coordinate, y is ascending ventro-dorsal coordinate
     # Same for midpoints (center of vertebrae)
     midpts = np.array(roi3.side.midpnt)
-    midpts[:, 1] = -midpts[:, 1] + 512 * roi3.side.resize_factor
+    midpts[:, 1] = -midpts[:, 1] + arr3d_8.shape[1] * roi3.side.resize_factor
     # Compute spline joining pts_top_arr_sorted
     x, y = np.array(pts_top_arr_sorted)[:, 1], np.array(pts_top_arr_sorted)[:, 0]
     f = interp1d(y, x, kind='cubic')  # Compute spline function
@@ -195,12 +195,12 @@ def run_analysis(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='SPINE')
     # in spline.top, x is ascending left-to-right coordinate, y is ascending caudo-rostral coordinate
     ynew = pts_side_arr_sorted[:, 0]
     vlimits = np.vstack((np.array(f(ynew)), ynew)).T  # Coordinates of spline points
-    vlimits[:, 0] = vlimits[:, 0] + 512 * roi3.side.resize_factor
+    vlimits[:, 0] = vlimits[:, 0] + arr3d_8.shape[1] * roi3.side.resize_factor
     # vlimits: coordinates of vertebrae limits, same coordinate system as spline.top...
     # ...(x is ascending left-to-right coordinate, y is ascending caudo-rostral coordinate)
     ynew = midpts[:, 0]
     center_v = np.vstack((np.array(f(ynew)), ynew)).T  # Coordinates of spline points
-    center_v[:, 0] = center_v[:, 0] + 512 * roi3.side.resize_factor
+    center_v[:, 0] = center_v[:, 0] + arr3d_8.shape[1] * roi3.side.resize_factor
 
     ''' Step 9: save coordinates of vertebrae and params '''
     N_V_annotated = len(roi3.side.V_ID)  # Number of vertebrae annotated
@@ -296,11 +296,11 @@ def vertebral_profiles(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='S
     # Define coordinates of reference points drawn on side projection (vertebrae limits)
     pts_side_arr = np.array(roi3.side.pts)
     pts_side_arr_sorted = pts_side_arr[np.argsort(pts_side_arr[:, 0])]
-    pts_side_arr_sorted[:, 1] = -pts_side_arr_sorted[:, 1] + 512 * roi3.side.resize_factor
+    pts_side_arr_sorted[:, 1] = -pts_side_arr_sorted[:, 1] + arr3d_8.shape[1] * roi3.side.resize_factor
     # in pts_side_arr_sorted, x is ascending caudo-rostral coordinate, y is ascending ventro-dorsal coordinate
     # Same for midpoints (center of vertebrae)
     midpts = np.array(roi3.side.midpnt)
-    midpts[:, 1] = -midpts[:, 1] + 512 * roi3.side.resize_factor
+    midpts[:, 1] = -midpts[:, 1] + arr3d_8.shape[1] * roi3.side.resize_factor
     # Compute spline joining pts_top_arr_sorted
     x, y = np.array(pts_top_arr_sorted)[:, 1], np.array(pts_top_arr_sorted)[:, 0]
     f = interp1d(y, x, kind='cubic')  # Compute spline function
@@ -311,12 +311,12 @@ def vertebral_profiles(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='S
     # in spline.top, x is ascending left-to-right coordinate, y is ascending caudo-rostral coordinate
     ynew = pts_side_arr_sorted[:, 0]
     vlimits = np.vstack((np.array(f(ynew)), ynew)).T  # Coordinates of spline points
-    vlimits[:, 0] = vlimits[:, 0] + 512 * roi3.side.resize_factor
+    vlimits[:, 0] = vlimits[:, 0] + arr3d_8.shape[1] * roi3.side.resize_factor
     # vlimits: coordinates of vertebrae limits, same coordinate system as spline.top...
     # ...(x is ascending left-to-right coordinate, y is ascending caudo-rostral coordinate)
     ynew = midpts[:, 0]
     center_v = np.vstack((np.array(f(ynew)), ynew)).T  # Coordinates of spline points
-    center_v[:, 0] = center_v[:, 0] + 512 * roi3.side.resize_factor
+    center_v[:, 0] = center_v[:, 0] + arr3d_8.shape[1] * roi3.side.resize_factor
 
     ''' Step 5: compute vertebrae profiles using projection plane perpendicular to spine axis'''
     # We use the midpoints calculated in run_analysis
@@ -341,7 +341,7 @@ def vertebral_profiles(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='S
         vec = utils.norml(np.array([TV1[0],TV2[0],TV1[1]]))
         up = utils.norml(utils.vprod(v, vec))
         vp = utils.norml(utils.vprod(vec, up))
-        ori = np.array([midpts[k, 0], 3*512-center_v[k, 0], midpts[k, 1]]) / 3
+        ori = np.array([midpts[k, 0], 3*arr3d_8.shape[1]-center_v[k, 0], midpts[k, 1]]) / 3
         v_im1 = np.zeros((71, 71))
         v_im2 = np.zeros((71, 71))
         v_im3 = np.zeros((71, 71))
@@ -353,43 +353,43 @@ def vertebral_profiles(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='S
             for j in np.linspace(-35,35,num=71):
                 #
                 coord = np.round(ori - (3*vec) + i*up + j*vp).astype('int16')
-                if not np.any((coord >= 512) | (coord <= 0)):
+                if not np.any((coord >= arr3d_8.shape[1]) | (coord <= 0)):
                     v_im1[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
                 else:
                     v_im1[int(i + 35), int(j + 35)] = 0
                 #
                 coord = np.round(ori - (2*vec) + i*up + j*vp).astype('int16')
-                if not np.any((coord >= 512) | (coord <= 0)):
+                if not np.any((coord >= arr3d_8.shape[1]) | (coord <= 0)):
                     v_im2[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
                 else:
                     v_im2[int(i + 35), int(j + 35)] = 0
                 #
                 coord = np.round(ori - vec + i*up + j*vp).astype('int16')
-                if not np.any((coord >= 512) | (coord <= 0)):
+                if not np.any((coord >= arr3d_8.shape[1]) | (coord <= 0)):
                     v_im3[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
                 else:
                     v_im3[int(i + 35), int(j + 35)] = 0
                 #
                 coord = np.round(ori + i*up + j*vp).astype('int16')
-                if not np.any((coord >= 512) | (coord <= 0)):
+                if not np.any((coord >= arr3d_8.shape[1]) | (coord <= 0)):
                     v_im4[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
                 else:
                     v_im4[int(i + 35), int(j + 35)] = 0
                 #
                 coord = np.round(ori + vec + i*up + j*vp).astype('int16')
-                if not np.any((coord >= 512) | (coord <= 0)):
+                if not np.any((coord >= arr3d_8.shape[1]) | (coord <= 0)):
                     v_im5[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
                 else:
                     v_im5[int(i + 35), int(j + 35)] = 0
                 #
                 coord = np.round(ori + (2*vec) + i * up + j * vp).astype('int16')
-                if not np.any((coord >= 512) | (coord <= 0)):
+                if not np.any((coord >= arr3d_8.shape[1]) | (coord <= 0)):
                     v_im6[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
                 else:
                     v_im6[int(i + 35), int(j + 35)] = 0
                 #
                 coord = np.round(ori - (3*vec) + i*up + j*vp).astype('int16')
-                if not np.any((coord >= 512) | (coord <= 0)):
+                if not np.any((coord >= arr3d_8.shape[1]) | (coord <= 0)):
                     v_im7[int(i + 35), int(j + 35)] = arr[coord[0], coord[1], coord[2]]
                 else:
                     v_im7[int(i + 35), int(j + 35)] = 0
@@ -402,15 +402,16 @@ def vertebral_profiles(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='S
         # v_im_resized, resize_factor = utils.customResize(v_im, 3)
         # v_im_resized = utils.imRescale2uint8(utils.imLevels(v_im_resized, 70, 220))
         # Save binary image (greyscale)
-        cv2.imwrite(os.path.join(v_analysis_path,'raw', "%02d" % k + '_' + roi3.side.V_ID[k] + '.png'), v_im_bin)
+        cv2.imwrite(os.path.join(v_analysis_path,'raw', "%02d" % k + '_' + roi3.side.V_ID[k] + '.png'), v_im_resized)
         # Then save labeled image (rgb)
         v_im_bin_rgb = cv2.merge(((v_im_bin,) * 3))
-        cv2.line(v_im_bin_rgb, (107 - 10, 107), (107 + 10, 107), (0, 0, 255), 2)
-        cv2.line(v_im_bin_rgb, (107, 107 - 10), (107, 107 + 10), (0, 0, 255), 2)
-        cv2.putText(v_im_bin_rgb, roi3.side.V_ID[k], (10, 30),
+        v_im_resized_rgb = cv2.merge(((v_im_resized,) * 3))
+        cv2.line(v_im_resized_rgb, (107 - 10, 107), (107 + 10, 107), (0, 0, 255), 2)
+        cv2.line(v_im_resized_rgb, (107, 107 - 10), (107, 107 + 10), (0, 0, 255), 2)
+        cv2.putText(v_im_resized_rgb, roi3.side.V_ID[k], (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), lineType=cv2.LINE_AA)
-        cv2.rectangle(v_im_bin_rgb, (0, 0), (int(71*resize_factor-1), int(71*resize_factor-1)), (130, 130, 130), 1)
-        cv2.imwrite(os.path.join(v_analysis_path,'labeled', "%02d" % k + '_' + roi3.side.V_ID[k] + '.png'), v_im_bin_rgb)
+        cv2.rectangle(v_im_resized_rgb, (0, 0), (int(71*resize_factor-1), int(71*resize_factor-1)), (130, 130, 130), 1)
+        cv2.imwrite(os.path.join(v_analysis_path,'labeled', "%02d" % k + '_' + roi3.side.V_ID[k] + '.png'), v_im_resized_rgb)
     print('done.')
 
 def vertebral_angles(session, mouse, datapath='/home/ghyomm/DATA_MICROCT', struct='SPINE'):
