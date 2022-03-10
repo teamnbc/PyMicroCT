@@ -1,4 +1,3 @@
-# PyMicroCT
 
 ![alt text](https://github.com/ghyomm/PyMicroCT/blob/master/pics/Repo%20card.png)
 
