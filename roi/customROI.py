@@ -41,7 +41,7 @@ class CustROI3:
 class DrawLine:
     '''Class used to draws lines to estimate mouse tilt'''
     def __init__(self, im, msg, fact):
-        self.im = im  # Source image
+        self.im = im  # Source image: rear projection.
         self.th = 255  # Image threshold
         self.fact = fact  # Resize factor
         self.msg = msg  # Used as window handler
@@ -682,10 +682,10 @@ class DrawVertebraeLimits:
                             midpnt_bot[i, :] = self.midpnt[i, :] - midlen
                         # Now add labels (name of vertebrae)
                         # First, find interval in which L6 position falls:
-                        vname = [''] * self.midpnt.shape[0]  # Initialize list containing names to display
+                        vname = [''] * pts_arr_sorted.shape[0]  # Initialize list containing names to display
                         ii = int(np.digitize(math.floor(self.resize_factor * self.L6), pts_arr_sorted[:, 0]))
                         if ii > 0 and ii < pts_arr_sorted.shape[0]:
-                            for n in range(0,self.midpnt.shape[0]):
+                            for n in range(0,pts_arr_sorted.shape[0]):
                                 vname[n] = self.V_ID_list[25 + ii-n-1]  # 25 = 'L6'
                             self.V_ID = vname
                         # Now calculate coordinates of label for each vertebrae

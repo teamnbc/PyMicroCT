@@ -1,9 +1,10 @@
 
 '''
-Main PyMicroCT functions are here.
-'''
+Main PyMicroCT functions (run_analysis, vertebral_profiles and vertebral_angles) are here.
 
-# Dependencies:
+Data organization:
+
+'''
 
 import os, cv2, dicom, pydicom, roi, time, pickle, sys, glob
 import numpy as np
@@ -13,210 +14,332 @@ from scipy.interpolate import interp1d
 import symmetry as sym
 from cython_code import cyutils
 import pandas as pd
+import matplotlib.pyplot as plt
 
-# Drawing functions and related classes are in roi/customROI.py
-
-'''
-Steps:
-1. Define paths
-2. Obtain 3D array from Dicom images
-3. Draw horizontal line (tilt angle will be used to rotate spine)
-4. Draw mouse contour on rear view (to eliminate non-mouse objects, e.g. tube)
-5. Draw contour of spine on side view (to have cleaner spine side view)s
-6. Draw spine axis on top view (with spline interpolation)
-7. draw limits of each vertebrae on projection obtained after step 4.
-8: compute 3D coordinates of vertebrae limits
-9: save coordinates of vertebrae and params
-10: compute vertebrae profiles using projection plane perpendicular to spine axis
-
-Array names (note: masks are applied to float 32 bits version...
-...which are then converted to uint8):
-arr3d_8/32: original 3D array (8 for uint8, 32 for float 32 bits).
-arr3d_8/32_masked1: rear mask applied to arr3d_32.
-arr3d_8/32_masked2: top (spline) mask applied to arr3d_8/32_masked1.
-arr3d_8/32_masked3: side mask applied to arr3d_32_masked2.
-'''
 
 def run_analysis(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='SPINE'):
-    # Debug:
+
+    # For debug:
     # datapath='/mnt/data/DATA_SSPO'
     # struct='SPINE'
     # session='example_session_SPINE'
     # mouse='example_mouse_Colonne'
-    #
+
     ''' Step 1: define paths '''
-    analysis_path = os.path.join(datapath, struct, session, mouse, 'analysis')
-    im_path = os.path.join(analysis_path, 'images')
+
+    subj_path = os.path.join(datapath, struct, session, mouse)  # Animal directory.
+    data_path = os.path.join(subj_path, 'data')  # Location of DICOM (.dcm) file(s).
+    if not os.path.exists(data_path):
+        sys.exit('No data folder in ' + subj_path + '.')
+    analysis_path = os.path.join(subj_path, 'analysis')  # Where pmct will store its files.
+    im_path = os.path.join(analysis_path, 'images')  # Where pmct will store images.
     if not os.path.exists(im_path):
         os.makedirs(im_path)
-    roi_path = os.path.join(analysis_path, 'rois')
+    roi_path = os.path.join(analysis_path, 'rois')  # Where pmct will store roi information.
     if not os.path.exists(roi_path):
         os.makedirs(roi_path)
-    src_dir = os.path.join(datapath, struct, session, mouse, 'data')
 
-    ''' Step 2: obtain 3D array and voxel info using all dcm files in directory '''
-    dcm_files = glob.glob(src_dir + '/*.dcm')
-    ndcm = len(dcm_files)
-    if ndcm == 0:
-        sys.exit('No .dcm file in ' + src_dir + '.')
-    if ndcm > 1:
-        # Tested with a series of dcm images obtained from Montrouge.
-        # In this case, the 3D stack has the following shape: arr3d_32.shape = (512,512,512).
-        # Debug:
-        # src_dir = '/mnt/data/DATA_MICROCT/SPINE/20201014_SPINE/CN723_40_Colonne_111610/data'
-        arr3d_32, voxel_spacing = dicom.load_stack(src_dir)  # 3D array in float 32
-    if ndcm == 1:  # One stack of dcm images.
-        # Tested with dcm stack exported via Amide from data obtained using an Albira system (Bruker).
-        # In this case, the 3D stack has the following shape: arr3d_32.shape = (547,580,580).
-        # Where 547 is the number of slices along the antero-posterior axis.
-        # Debug:
-        src_dir = '/mnt/data/DATA_SSPO/SPINE/example_session_SPINE/example_mouse_Colonne/data/export_windows.dcm'
-        dcm_data = pydicom.dcmread(dcm_files[0])
-        voxel_spacing=(float(dcm_data.SliceThickness),float(dcm_data.PixelSpacing[0]),float(dcm_data.PixelSpacing[1]))  # voxel size in mm.
-        arr = dcm_data.pixel_array
-        arr3d_32 = np.float32(arr)
+    ''' Step 2: obtain 3D array and voxel info from .dcm file(s) '''
 
-    arr3d_8 = utils.imRescale2uint8(arr3d_32)  # Scale [min max] to [0 255] (i.e. convert to 8 bit)
-    nslices = arr3d_8.shape[0]  # Keep track of number of slices in stack.
+    dcm_files = glob.glob(data_path + '/*.dcm')  # Looking for .dcm files in data folder.
+    ndcm = len(dcm_files)  # Number of .dcm files.
 
-    # Below is just for illustration purposes (saving individual dicom images)
+    if ndcm == 0:  # Case .dcm file(s) missing.
+        sys.exit('No .dcm file in ' + data_path + '.')
+
+    if ndcm > 1:  # Case several .dcm files.
+        # Assuming data folder contains .dcm files with incremented names, belonging to same stack, e.g.:
+        # mouseXXX_sessionYY_0001.dcm
+        # mouseXXX_sessionYY_0002.dcm
+        # ...
+        # mouseXXX_sessionYY_0512.dcm
+        # Using package dicom to read file.
+        # Test with XXX (system used at Montrouge).
+
+        # For debug:
+        # data_path = '/mnt/data/DATA_MICROCT/SPINE/20190724_SPINE/BY927_23_Colonne_164250/data'
+
+        arr3d_float32, voxel_spacing = dicom.load_stack(data_path)  # Usually a 3D array of floats.
+
+    if ndcm == 1:  # Case one dcm file.
+        # Assuming data folder has one .dcm file containing a stack of images.
+        # Using package pydicom to read file.
+        # Assuming file is built using the official DICOM Standard.
+        # Useful information here: https://pydicom.github.io/pydicom/stable/tutorials/dataset_basics.html
+        # Tested with a .dcm stack exported via Amide from data obtained using an Albira system (Bruker).
+
+        # For debug:
+        # src_dir = '/mnt/data/DATA_SSPO/SPINE/example_session_SPINE/example_mouse_Colonne/data/export_windows.dcm'
+
+        data = pydicom.dcmread(dcm_files[0])
+        # data.NumberOfSlices
+        voxel_spacing = (float(data.SliceThickness),float(data.PixelSpacing[0]),float(data.PixelSpacing[1]))  # voxel size in mm.
+        arr = data.pixel_array
+        arr3d_float32 = np.float32(arr)
+
+    arr3d_8 = utils.imRescale2uint8(arr3d_float32)  # Scale [min max] to [0 255] (i.e. convert to 8 bit).
+
+    # The stack has (should have) the following dimensions:
+    # Dimension 0 (X): rostro-caudal direction.
+    # -> slices along dimension 0 are coronal slices (index 0 = most rostral slice).
+    # Dimension 1 (Y): dorso-ventral direction.
+    # -> slices along dimension 1 are transverse slices (index 0 = most dorsal pixel).
+    # Dimension 2 (Z): medio-lateral axis.
+    # -> slices along dimension 2 are (para)sagittal slices (index 0 = right side of animal).
+
+    # Main assumption: when looking at transverse slices, left of image is left of animal.
+    # This assumptions sets the following right-handed reference frame:
+    #
+    #                           Y axis
+    #                          (dorsal)
+    #                             0
+    #                             |
+    # (tail) arr.shape[0]-1 ------------ 0 (nose) X axis
+    #                             |
+    #                       arr.shape[1]-1
+    #                         (ventral)
+    #
+    # Third axis (Z) along medio-lateral axis pointing toward from observer (from left to right).
+
+    # Saving individual dicom images:
     # for i in range(512):
     #     im = arr3d_8[i,:,:]
-    #     #im = utils.imRescale2uint8(utils.imLevels(im, 10, 240))
-    #     cv2.rectangle(im,(0,0),(511,511),(150,150,150),2)
-    #     cv2.imwrite('/home/ghyomm/Desktop/tmp/' + "%03d" % i + '.png',im)
+    #     im = utils.imRescale2uint8(utils.imLevels(im, 10, 240))
+    #     cv2.imwrite('/mnt/data/DATA_SSPO/' + "%03d" % i + '.png',im)
 
-    ''' Step 3-5: draw horizontal line '''
-    im_rear = np.amax(arr3d_8, axis=0)  # Projection along antero-posterior axis (rear view).
-    im_rear_rgb = cv2.merge(((im_rear,) * 3))  # Convert to RGB
-    im_rear_rgb_copy = im_rear_rgb.copy()  # Copy used for drawing
+    ''' Step 3: initialize class CustROI1 for working on rear and side views '''
+
+    # Calculate rear view:
+    # max projection along caudo-rostral axis, nose pointing away from observer;
+    # the left of animal is on the left side of the resulting image.
+    # Note the flip to obtain image in right orientation.
+    im_rear = np.amax(arr3d_8, axis=0)  # Projection along caudo-rostral axis (rear view).
+    im_rear = utils.imRescale2uint8(utils.imLevels(im_rear,utils.imBackground(im_rear),255))
+    cv2.imwrite(os.path.join(im_path, 'ORIGINAL_rear_view.png'), im_rear)  # For illustration purposes.
+    im_rear_rgb = cv2.merge(((im_rear,) * 3))  # Convert to RGB.
+    # Dimensions of resulting 2D array:
+    # Dimension 0 (rows): dorso-ventral direction (0 = most dorsal pixels).
+    # Dimension 1 (columns): medio-lateral axis (0 = left side of animal, left side of image).
+    # i.e.:
+    # (left of animal, (0,0) ------------ (0,ncols)     (right of animal,
+    # dorsal)          |                  |             dorsal)
+    #                  |                  |
+    # (left of animal, |                  |             (right of animal,
+    # ventral)         (nrows,0) -------- (nrows,ncols) ventral)
+
+    # Calculate side view:
+    # Note the transpose and flip steps to obtain image in proper orientation.
     im_side = np.flip(np.transpose(np.amax(arr3d_8, axis=2)), axis=1)  # Projection (side view)
+    im_side = utils.imRescale2uint8(utils.imLevels(im_side,utils.imBackground(im_side),255))
+    cv2.imwrite(os.path.join(im_path, 'ORIGINAL_side_view.png'), im_side)  # For illustration purposes.
     im_side_rgb = cv2.merge(((im_side,) * 3))  # Convert to RGB
+    # Dimensions of resulting 2D array:
+    # Dimension 0 (rows): dorso-ventral direction (0 = most dorsal pixels).
+    # Dimension 1 (columns): caudo-rostral axis (0 = tail of animal, left of image).
+    # i.e.:
+    # (tail of animal, (0,0) ------------ (0,ncols)     (nose of animal,
+    # dorsal)          |                  |             dorsal)
+    #                  |                  |
+    # (tail of animal, |                  |             (nose of animal,
+    # ventral)         (nrows,0) -------- (nrows,ncols) ventral)
+
+    # Calculate top view (not used in CustROI1 but for illustration purposes):
+    # Note the flip to bring the right of the animal on the right of the image.
+    im_top = np.amax(arr3d_8, axis=1)
+    im_top = utils.imRescale2uint8(utils.imLevels(im_top,utils.imBackground(im_top),255))
+    cv2.imwrite(os.path.join(im_path, 'ORIGINAL_top_view.png'), im_top)
+    # Dimensions of resulting 2D array:
+    # Dimension 0 (rows): rostro-caudal direction (0 = toward nose).
+    # Dimension 1 (columns): medio-lateral axis (0 = left of animal, left of image).
+    # i.e.:
+    # (left of animal, (0,0) -------- (0,ncols)     (right of animal,
+    # rostral)         |              |             rostral)
+    #                  |              |
+    #                  |              |
+    #                  |              |
+    #                  |              |
+    # (left of animal, |              |             (right of animal,
+    # caudal)          (nrows,0) ---- (nrows,ncols) ventral)
+
+    # Build class CustROI1:
+    im_rear_rgb_copy = im_rear_rgb.copy()  # Copy used for drawing.
     roi1 = roi.CustROI1(imsrc_horiz=im_rear_rgb,
                     msg_horiz='Draw mouse\'s horizontal line (press \'q\' to escape)', fact_horiz=3,
                     imsrc_rear=im_rear_rgb_copy,
                     msg_rear='Draw mouse contour (press \'q\' to escape)', fact_rear=3,
                     imsrc_side=im_side_rgb,
                     msg_side='Draw spine contour (press \'q\' to escape)', fact_side=3)
-    roi1.tilt.horizontal_line()  # Draw horizontal line underneath mouse on rear projection
-    cv2.imwrite(os.path.join(im_path, 'roi1_horiz_im.png'), roi1.tilt.im_resized)
-    roi1.tilt.vertical_line()
-    cv2.imwrite(os.path.join(im_path, 'roi1_vert_im.png'), roi1.tilt.im_resized)
-    roi1.rear.drawpolygon()  # Draw mouse's contour on rear view to define rear mask
-    cv2.imwrite(os.path.join(im_path, 'roi1_rear_im.png'), roi1.rear.im)
-    cv2.imwrite(os.path.join(im_path, 'roi1_rear_immask.png'), roi1.rear.immask)
-    roi1.side.drawpolygon()  # Draw contour of spine on side view
-    cv2.imwrite(os.path.join(im_path, 'roi1_side_im.png'), roi1.side.im)
-    cv2.imwrite(os.path.join(im_path, 'roi1_side_immask.png'), roi1.side.immask)
-    # print('Applying masks and preparing top view... ')
-    sys.stdout.write('Applying masks and preparing top view... ')
-    # Apply rear mask on original 3d array
-    mask_rear = np.broadcast_to(roi1.rear.immask == 0, arr3d_32.shape)
-    minval = np.ma.array(arr3d_32, mask=mask_rear).min()  # min pixel val within selected region
-    arr3d_32_masked1 = np.ma.array(arr3d_32, mask=mask_rear, fill_value=minval).filled()
-    arr3d_8_masked1 = utils.imRescale2uint8(arr3d_32_masked1)  # Convert to 8 bits
-    # Compute and save projections (for illustration purposes)
-    im_rear = utils.imRescale2uint8(utils.imLevels(utils.imRescale2uint8(np.amax(arr3d_8_masked1, axis=0)), 70, 220))
-    im_side = utils.imRescale2uint8(utils.imLevels(utils.imRescale2uint8(np.amax(arr3d_8_masked1, axis=2)), 70, 220))
-    im_top = utils.imRescale2uint8(utils.imLevels(utils.imRescale2uint8(np.amax(arr3d_8_masked1, axis=1)), 70, 220))
-    cv2.imwrite(os.path.join(im_path, 'projection_rear.png'), im_rear)
-    cv2.imwrite(os.path.join(im_path, 'projection_side.png'), np.flip(np.transpose(im_side), axis=1))
-    cv2.imwrite(os.path.join(im_path, 'projection_top.png'), im_top)
-    print('done.')
 
-    ''' Step 6: draw spine axis on top view '''
-    im_top_rgb = cv2.merge(((im_top,) * 3))  # Convert to RGB (to draw color lines and points)
-    # Initialize CustROI2 object (see customROI.py)
-    roi2 = roi.CustROI2(imsrc_top = im_top_rgb,
+    ''' Step 4: annotate rear and side views and apply rear mask '''
+
+    # Draw horizontal line underneath mouse on rear view:
+    roi1.tilt.horizontal_line()
+    cv2.imwrite(os.path.join(im_path, 'ROI1_horiz_line.png'), roi1.tilt.im_resized)
+
+    # Draw vertical line (= animal symetry line) on rear view:
+    roi1.tilt.vertical_line()
+    cv2.imwrite(os.path.join(im_path, 'ROI1_vert_line.png'), roi1.tilt.im_resized)
+
+    # Draw mouse's contour on rear view to define rear mask.
+    roi1.rear.drawpolygon()
+    cv2.imwrite(os.path.join(im_path, 'ROI1_rear_roi.png'), roi1.rear.im)
+    cv2.imwrite(os.path.join(im_path, 'ROI1_rear_mask.png'), roi1.rear.immask)
+
+    # Draw contour of spine on side view to define side mask.
+    roi1.side.drawpolygon()
+    cv2.imwrite(os.path.join(im_path, 'ROI1_side_roi.png'), roi1.side.im)
+    cv2.imwrite(os.path.join(im_path, 'ROI1_side_mask.png'), roi1.side.immask)
+
+    # Apply rear mask on original 3d array:
+    mask_rear = np.broadcast_to(roi1.rear.immask == 0, arr3d_float32.shape)  # Compute rear mask.
+    arr3d_float32_masked1 = np.ma.array(arr3d_float32, mask=mask_rear, fill_value=arr3d_float32.min()).filled()
+    arr3d_8_masked1 = utils.imRescale2uint8(arr3d_float32_masked1)  # Convert to uint8.
+
+    # Save masked projections (for illustration purposes):
+    im_rear_masked = np.amax(arr3d_8_masked1, axis=0)
+    im_rear_masked = utils.imRescale2uint8(utils.imLevels(im_rear_masked,utils.imBackground(im_rear_masked),255))
+    cv2.imwrite(os.path.join(im_path, 'MASKED_ROI1_rear_view.png'), im_rear_masked)
+    im_side_masked = np.flip(np.transpose(np.amax(arr3d_8_masked1, axis=2)), axis=1)
+    im_side_masked = utils.imRescale2uint8(utils.imLevels(im_side_masked,utils.imBackground(im_side_masked),255))
+    cv2.imwrite(os.path.join(im_path, 'MASKED_ROI1_side_view.png'), im_side_masked)
+    im_top_masked = np.amax(arr3d_8_masked1, axis=1)
+    im_top_masked = utils.imRescale2uint8(utils.imLevels(im_top_masked,utils.imBackground(im_top_masked),255))
+    cv2.imwrite(os.path.join(im_path, 'MASKED_ROI1_top_view.png'), im_top_masked)
+
+    ''' Step 5: initialize class CustROI2 for working on top view '''
+
+    im_top_masked_rgb = cv2.merge(((im_top_masked,) * 3))  # Convert to RGB (to draw color lines and points)
+    roi2 = roi.CustROI2(imsrc_top = im_top_masked_rgb,
                         msg_top = 'Draw spine axis (press \'q\' to escape)',
                         fact_top = 3)
-    roi2.top.DrawL6()  # Indicate position of L6 vertebrae
-    roi2.top.DrawSpline()  # Select reference points along spine; splines are drawn automatically
-    # Save images for illustration purposes
-    # cv2.imwrite(os.path.join(im_path, 'roi2_top_im.png'), roi2.top.im)
-    # cv2.imwrite(os.path.join(im_path, 'roi2_top_immask.png'), roi2.top.immask)
-    # cv2.imwrite(os.path.join(im_path, 'roi2_top_im_annotated.png'), roi2.top.im_resized)
-    # NOTE: reference points are in roi2.top.pts and still in im * resize_factor coordinates
-    # Apply top mask on 3d array
-    arr = np.transpose(np.flip(arr3d_32_masked1, axis=1), (1, 0, 2))  # Necessary transformation to use np.broadcast
+
+    ''' Step 6: annotate top view and sequentially apply top and side masks '''
+
+    # Draw position of L6 vertebrae:
+    roi2.top.DrawL6()
+
+    # Select reference points along spine; splines are drawn automatically:
+    roi2.top.DrawSpline()  # NOTE: reference points are in roi2.top.pts in resized coordinates.
+
+    # Save images for illustration purposes:
+    cv2.imwrite(os.path.join(im_path, 'ROI2_top_spline.png'), roi2.top.im)
+    cv2.imwrite(os.path.join(im_path, 'ROI2_top_spline_mask.png'), roi2.top.immask)
+
+    # Apply top mask on 3d array:
+    # Note: the array is flipped and transposed before apply mask...
+    # ...because of the mismatch between numpy and opencv (rows,columns) indexing.
+    arr = np.transpose(np.flip(arr3d_float32_masked1, axis=1), (1, 0, 2))  # Necessary transformation to use np.broadcast
     mask_top = np.broadcast_to(roi2.top.immask == 0, arr.shape)
-    minval = np.ma.array(arr, mask=mask_top).min()  # min pixel val within selected region
-    arr3d_32_masked2 = np.ma.array(arr, mask=mask_top, fill_value=minval).filled()
-    arr3d_8_masked2 = utils.imRescale2uint8(arr3d_32_masked2)  # Convert to 8 bits
-    # Apply side mask (just for aesthetics, so only the vertebrae are visible)
-    # Below: necessary transformation to use np.broadcast
-    arr = np.transpose(np.flip(np.flip(arr3d_32_masked2, axis=1), axis=0), (2, 0, 1))
+    arr3d_float32_masked2 = np.ma.array(arr, mask=mask_top, fill_value=arr3d_float32_masked1.min()).filled()
+    arr3d_8_masked2 = utils.imRescale2uint8(arr3d_float32_masked2)  # Convert to uint8.
+
+    # Save top view obtained after applying top mask (for illustration purposes):
+    im_top_masked2 = np.amax(arr3d_8_masked2, axis=0)
+    im_top_masked2_vals = np.sort(np.unique(im_top_masked2.flatten()))
+    minval = np.delete(im_top_masked2_vals,np.where(im_top_masked2_vals == 0)[0][0])[0]
+    maxval = max(im_top_masked2_vals)
+    im_top_masked2 = utils.imRescale2uint8(utils.imLevels(im_top_masked2,minval,maxval))
+    cv2.imwrite(os.path.join(im_path, 'ROI2_top_view_masked.png'), im_top_masked2)
+
+    # Apply side mask, so only the vertebrae are visible:
+    # Note: again, flipping and transposing is necessary before applying mask.
+    arr = np.transpose(np.flip(np.flip(arr3d_float32_masked2, axis=1), axis=0), (2, 0, 1))
     mask_side = np.broadcast_to(roi1.side.immask == 0, arr.shape)
-    minval = np.ma.array(arr, mask=mask_side).min()  # min pixel val within selected region
-    arr3d_32_masked3 = np.ma.array(arr, mask=mask_side, fill_value=minval).filled()
-    arr3d_8_masked3 = utils.imRescale2uint8(arr3d_32_masked3)  # Convert to 8 bits
-    # Compute and save projections
+    arr3d_float32_masked3 = np.ma.array(arr, mask=mask_side, fill_value=arr3d_float32_masked2.min()).filled()
+    arr3d_8_masked3 = utils.imRescale2uint8(arr3d_float32_masked3)  # Convert to uint8.
+
+    # Compute and save side projection with both top and side masks applied:
     im_side_through_spine = np.amax(arr3d_8_masked3, axis=0)
-    im_side_through_spine = utils.imRescale2uint8(utils.imLevels(im_side_through_spine, 70, 220))
-    # Shapening kernel, it must equal to one eventually
+    im_side_through_spine = utils.imRescale2uint8(utils.imLevels(im_side_through_spine,utils.imBackground(im_side_through_spine),255))
+    cv2.imwrite(os.path.join(im_path, 'ROI2_side_through_spine.png'), im_side_through_spine)
+    # Apply shapening kernel (which must equal to one eventually):
     kernel_sharpening = np.array([[-1, -1, -1],
                                   [-1, 9, -1],
                                   [-1, -1, -1]])
-    # Apply the sharpening kernel
     im_side_through_spine_sharpened = cv2.filter2D(im_side_through_spine, -1, kernel_sharpening)
-    cv2.imwrite(os.path.join(im_path, 'im_side_through_spine.png'), im_side_through_spine_sharpened)
+    cv2.imwrite(os.path.join(im_path, 'ROI2_side_through_spine_sharpened.png'), im_side_through_spine_sharpened)
 
-    ''' Step 7: draw limits of vertebrae on side projection '''
+    ''' Step 7: initialize CustROI3 for working on side view through spine '''
+
     im_side_through_spine_sharpened_rgb = cv2.merge(((im_side_through_spine_sharpened,) * 3))
     roi3 = roi.CustROI3(imsrc_side=im_side_through_spine_sharpened_rgb,
                     msg_side='Draw limits of vertebrae (press \'q\' to escape)', fact_side=3,
-                    L6_position=im_side_through_spine_sharpened_rgb.shape[1]-1-roi2.top.L6_pos)
-    roi3.side.DrawVertebrae()
-    cv2.imwrite(os.path.join(im_path, 'im_side_through_spine_annotated.png'), roi3.side.im_resized)
-    # NOTE: reference points are in roi3.side.pts and still in im * resize_factor coordinates
+                    L6_position=im_side_through_spine_sharpened.shape[1]-1-roi2.top.L6_pos)
 
-    ''' Step 8: compute 3D coordinates of vertebrae limits '''
-    # Define coordinates of reference points drawn on top projection
+    ''' Step 8: draw limits of vertebrae on side projection '''
+
+    roi3.side.DrawVertebrae()
+    cv2.imwrite(os.path.join(im_path, 'ROI3_side_annotated.png'), roi3.side.im_resized)
+    # NOTE: reference points are in roi3.side.pts in resized coordinates.
+
+    ''' Step 9: compute 3D coordinates of vertebrae limits '''
+
+    # Define coordinates of reference points drawn on top projection:
     pts_top_arr = np.array(roi2.top.pts)
     pts_top_arr_sorted = np.flip(pts_top_arr[np.argsort(pts_top_arr[:, 1])])
     pts_top_arr_sorted = -pts_top_arr_sorted
     pts_top_arr_sorted[:, 0] = pts_top_arr_sorted[:, 0] - pts_top_arr_sorted[0, 0]
-    # in pts_top_arr_sorted, x is ascending caudo-rostral coordinate, y is ascending ML coordinate (from right to left)
-    # Define coordinates of reference points drawn on side projection (vertebrae limits)
+    # in pts_top_arr_sorted, x is ascending caudo-rostral coordinate, y is ascending ML coordinate (from RIGHT to LEFT).
+    # plt.plot(*pts_top_arr_sorted.T,'o')
+
+    # Define coordinates of reference points drawn on side projection (vertebrae limits):
     pts_side_arr = np.array(roi3.side.pts)
     pts_side_arr_sorted = pts_side_arr[np.argsort(pts_side_arr[:, 0])]
     pts_side_arr_sorted[:, 1] = -pts_side_arr_sorted[:, 1] + arr3d_8.shape[1] * roi3.side.resize_factor
     # in pts_side_arr_sorted, x is ascending caudo-rostral coordinate, y is ascending ventro-dorsal coordinate
-    # Same for midpoints (center of vertebrae)
+    # plt.plot(*pts_side_arr_sorted.T,'o')
+
+    # Same for midpoints (center of vertebrae):
     midpts = np.array(roi3.side.midpnt)
-    midpts[:, 1] = -midpts[:, 1] + arr3d_8.shape[1] * roi3.side.resize_factor
+    midpts_sorted = midpts[np.argsort(midpts[:, 0])]
+    midpts_sorted[:, 1] = -midpts_sorted[:, 1] + arr3d_8.shape[1] * roi3.side.resize_factor
+    # in midpts_sorted, x is ascending caudo-rostral coordinate, y is ascending ventro-dorsal coordinate
+    # plt.plot(*midpts_sorted.T,'o')
+
     # Compute spline joining pts_top_arr_sorted
-    x, y = np.array(pts_top_arr_sorted)[:, 1], np.array(pts_top_arr_sorted)[:, 0]
-    f = interp1d(y, x, kind='cubic')  # Compute spline function
+    x, y = pts_top_arr_sorted[:, 1], pts_top_arr_sorted[:, 0]  # x: ascending ML coordinate (from RIGHT to LEFT); y: ascending caudo-rostral coordinate.
+    f = interp1d(y, x, kind='cubic')  # Compute spline function.
+
+    # Control of result of spline interpolation:
     # ynew = np.linspace(np.min(y), np.max(y), num=500, endpoint=True)
     # spline_top = np.vstack((np.array(f(ynew)), ynew)).T  # Coordinates of spline points
-    # spline_top[:,0] = -spline_top[:,0]
-    # spline_top[:,1] = spline_top[:,1] - spline_top[0,1]
-    # in spline.top, x is ascending left-to-right coordinate, y is ascending caudo-rostral coordinate
-    ynew = pts_side_arr_sorted[:, 0]
+    # plt.plot(*spline_top.T,'o')
+    # In spline_top: x is ML coordinate from RIGHT to LEFT, y is ascending caudo-rostral coordinate,
+
+    # Interpolation of vertebra limits (i.e. reference points) coordinate along media-lateral axis.
+    ynew = pts_side_arr_sorted[:, 0]  # ascending caudo-rostral coordinate.
     vlimits = np.vstack((np.array(f(ynew)), ynew)).T  # Coordinates of spline points
     vlimits[:, 0] = vlimits[:, 0] + arr3d_8.shape[1] * roi3.side.resize_factor
-    # vlimits: coordinates of vertebrae limits, same coordinate system as spline.top...
-    # ...(x is ascending left-to-right coordinate, y is ascending caudo-rostral coordinate)
-    ynew = midpts[:, 0]
+    # in vlimits: x is ascending RIGHT to LEFT coordinate, y is ascending caudo-rostral coordinate.
+    # plt.plot(*vlimits.T,'o')
+
+    # Interpolation of vertebrae midpoints coordinate along media-lateral axis.
+    ynew = midpts_sorted[:, 0]
     center_v = np.vstack((np.array(f(ynew)), ynew)).T  # Coordinates of spline points
     center_v[:, 0] = center_v[:, 0] + arr3d_8.shape[1] * roi3.side.resize_factor
+    # in center_v: x is ascending RIGHT to LEFT coordinate, y is ascending caudo-rostral coordinate.
+    # plt.plot(*center_v.T,'o')
 
-    ''' Step 9: save coordinates of vertebrae and params '''
-    N_V_annotated = len(roi3.side.V_ID)  # Number of vertebrae annotated
-    voxel_size = int(round(np.mean(np.array(voxel_spacing)) * 1000))
-    # roi3.side.V_ID.append("-")
-    # center_v = np.vstack((center_v, np.array([np.nan, np.nan])))
-    # Save coordinates of vertebrae limits into file together with vertebrae ID
+    ''' Step 10: save coordinates of vertebrae and params '''
+
+    N_V_annotated = len(roi3.side.V_ID)  # Number of vertebrae annotated.
+    voxel_size = voxel_spacing[0]  # Assuming voxel size is the same in all dimensions.
+
+    # Save coordinates of vertebrae limits into file together with vertebrae ID.
+    # The final reference frame is a bit different from the original one:
+    # it is a right handed reference frame with:
+    # - increasing x values along the caudo-rostral direction (positive x toward nose).
+    # - increasing y values along the media-lateral axis with positive y toward left side.
+    # - increasing z values along the ventro-dorsal axis with positive z toward dorsal side.
     with open(os.path.join(analysis_path, 'vertebrae_coordinates.txt'), 'w') as outfile:
         outfile.write("ID\tx_cen\ty_cen\tz_cen\tx_lim\ty_lim\tz_lim\n")
         for i in range(pts_side_arr_sorted.shape[0]-1):
-            x_cen = (center_v[i, 1]/roi3.side.resize_factor)*(voxel_size/1000)
-            y_cen = (center_v[i, 0]/roi3.side.resize_factor)*(voxel_size/1000)
-            z_cen = (midpts[i, 1]/roi3.side.resize_factor)*(voxel_size/1000)
-            x_lim = (pts_side_arr_sorted[i, 0]/roi3.side.resize_factor)*(voxel_size/1000)
-            y_lim = (vlimits[i, 0]/roi3.side.resize_factor)*(voxel_size/1000)
-            z_lim = (pts_side_arr_sorted[i, 1]/roi3.side.resize_factor)*(voxel_size/1000)
+            x_cen = (center_v[i, 1]/roi3.side.resize_factor)*voxel_size  # Same as midpts_sorted[:, 0].
+            y_cen = (center_v[i, 0]/roi3.side.resize_factor)*voxel_size  # Interpolated with spline.
+            z_cen = (midpts_sorted[i, 1]/roi3.side.resize_factor)*voxel_size  # Ascending ventro-dorsal coordinate.
+            x_lim = (pts_side_arr_sorted[i, 0]/roi3.side.resize_factor)*voxel_size
+            y_lim = (vlimits[i, 0]/roi3.side.resize_factor)*voxel_size  # Interpolated with spline.
+            z_lim = (pts_side_arr_sorted[i, 1]/roi3.side.resize_factor)*voxel_size
             outfile.write(roi3.side.V_ID[i] + "\t")  # ID
             outfile.write("%f" % x_cen + "\t")  # x_cen
             outfile.write("%f" % y_cen + "\t")  # y_cen
@@ -224,15 +347,17 @@ def run_analysis(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='SPINE')
             outfile.write("%f" % x_lim + "\t")  # x_lim
             outfile.write("%f" % y_lim + "\t")  # y_lim
             outfile.write("%f" % z_lim + "\n")  # z_lim
+        # Deal with last (most rostral) vertebrae.
         i = pts_side_arr_sorted.shape[0]-1
-        x_lim = (pts_side_arr_sorted[i, 0] / roi3.side.resize_factor) * (voxel_size / 1000)
-        y_lim = (vlimits[i, 0] / roi3.side.resize_factor) * (voxel_size / 1000)
-        z_lim = (pts_side_arr_sorted[i, 1] / roi3.side.resize_factor) * (voxel_size / 1000)
-        outfile.write("-\tnan\tnan\tnan\t")
+        x_lim = (pts_side_arr_sorted[i, 0] / roi3.side.resize_factor)*voxel_size
+        y_lim = (vlimits[i, 0] / roi3.side.resize_factor)*voxel_size
+        z_lim = (pts_side_arr_sorted[i, 1] / roi3.side.resize_factor)*voxel_size
+        outfile.write(roi3.side.V_ID[i] + "\tnan\tnan\tnan\t")
         outfile.write("%f" % x_lim + "\t")  # x_lim
         outfile.write("%f" % y_lim + "\t")  # y_lim
         outfile.write("%f" % z_lim + "\n")  # z_lim
-    # Save relevant params
+
+    # Save relevant params in separate txt file.
     today = date.today()
     with open(os.path.join(analysis_path, 'params.txt'), 'w') as outfile:
         outfile.write(os.path.join(datapath, struct, session, mouse) + "\n")
@@ -244,11 +369,13 @@ def run_analysis(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='SPINE')
         outfile.write("roi3.side.resize_factor = " + str(roi3.side.resize_factor) + "\n")
         outfile.write("Number of vertebrae annotated = " + str(N_V_annotated) + "\n")
 
-    ''' Step 10: save ROI objects in file '''
+    ''' Step 11: save ROI objects in file '''
+
     for i in range(1,4):
         roi_name = 'roi' + str(i)
         with open(os.path.join(roi_path, roi_name + '.pickle'), 'wb') as f:
             pickle.dump(locals()[roi_name], f)
+
 
 def vertebral_profiles(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='SPINE'):
     # Debug:
@@ -274,17 +401,17 @@ def vertebral_profiles(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='S
     if ndcm == 0:
         sys.exit('No .dcm file in ' + src_dir + '.')
     if ndcm > 1:
-        arr3d_32, voxel_spacing = dicom.load_stack(src_dir)  # 3D array in float 32
+        arr3d_float32, voxel_spacing = dicom.load_stack(src_dir)  # 3D array in float 32
     if ndcm == 1:  # One stack of dcm images.
         dcm_data = pydicom.dcmread(dcm_files[0])
         voxel_spacing=(float(dcm_data.SliceThickness),float(dcm_data.PixelSpacing[0]),float(dcm_data.PixelSpacing[1]))  # voxel size in mm.
         arr = dcm_data.pixel_array
-        arr3d_32 = np.float32(arr)
-    arr3d_8 = utils.imRescale2uint8(arr3d_32)  # Scale [min max] to [0 255] (i.e. convert to 8 bit)
-    mask_rear = np.broadcast_to(roi1.rear.immask == 0, arr3d_32.shape)
-    minval = np.ma.array(arr3d_32, mask=mask_rear).min()  # min pixel val within selected region
-    arr3d_32_masked1 = np.ma.array(arr3d_32, mask=mask_rear, fill_value=minval).filled()
-    arr3d_8_masked1 = utils.imRescale2uint8(arr3d_32_masked1)  # Convert to 8 bits
+        arr3d_float32 = np.float32(arr)
+    arr3d_8 = utils.imRescale2uint8(arr3d_float32)  # Scale [min max] to [0 255] (i.e. convert to 8 bit)
+    mask_rear = np.broadcast_to(roi1.rear.immask == 0, arr3d_float32.shape)
+    minval = np.ma.array(arr3d_float32, mask=mask_rear).min()  # min pixel val within selected region
+    arr3d_float32_masked1 = np.ma.array(arr3d_float32, mask=mask_rear, fill_value=minval).filled()
+    arr3d_8_masked1 = utils.imRescale2uint8(arr3d_float32_masked1)  # Convert to 8 bits
 
     ''' Step 4: compute 3D coordinates of vertebrae limits (same as in run_analysis function)'''
     # Define coordinates of reference points drawn on top projection

@@ -1,5 +1,6 @@
 import cv2, os, math, operator, sys, time
 import numpy as np
+from scipy.signal import find_peaks
 
 def imRescale2uint8(im):
     '''Rescale and convert to 8 bit ([min max] to [0 255])'''
@@ -30,3 +31,9 @@ def imShowMe(im,msg='image'):
             cv2.destroyWindow(msg)
             break
         time.sleep(0.01)  # Slow down while loop to reduce CPU usage
+
+# Find pixel value of first peak in histogram in uint8 image.
+def imBackground(im):
+    H, _ = np.histogram(im,bins=256,range=[0,255])
+    peaks, _ = find_peaks(H[1:], height = 0.1*max(H[1:]))
+    return peaks[0] + 1
