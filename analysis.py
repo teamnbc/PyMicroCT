@@ -89,7 +89,7 @@ def run_analysis(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='SPINE')
     # Dimension 2 (Z): medio-lateral axis.
     # -> slices along dimension 2 are (para)sagittal slices (index 0 = right side of animal).
 
-    # Main assumption: when looking at transverse slices, left of image is left of animal.
+    # Main assumption: when looking at transverse slices (top view), left of image is left of animal.
     # This assumptions sets the following right-handed reference frame:
     #
     #                           Y axis
@@ -101,11 +101,11 @@ def run_analysis(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='SPINE')
     #                       arr.shape[1]-1
     #                         (ventral)
     #
-    # Third axis (Z) along medio-lateral axis pointing toward from observer (from left to right).
+    # Third axis (Z) along medio-lateral axis pointing toward observer (from LEFT to RIGHT).
 
     # Saving individual dicom images:
     # for i in range(512):
-    #     im = arr3d_8[i,:,:]
+    #     im = arr3d_8[:,:,i]
     #     im = utils.imRescale2uint8(utils.imLevels(im, 10, 240))
     #     cv2.imwrite('/mnt/data/DATA_SSPO/' + "%03d" % i + '.png',im)
 
@@ -213,7 +213,7 @@ def run_analysis(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='SPINE')
     im_top_masked_rgb = cv2.merge(((im_top_masked,) * 3))  # Convert to RGB (to draw color lines and points)
     roi2 = roi.CustROI2(imsrc_top = im_top_masked_rgb,
                         msg_top = 'Draw spine axis (press \'q\' to escape)',
-                        fact_top = 3)
+                        fact_top = 3, width = (1,3))
 
     ''' Step 6: annotate top view and sequentially apply top and side masks '''
 

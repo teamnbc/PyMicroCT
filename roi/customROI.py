@@ -28,8 +28,8 @@ class CustROI1:
 
 # Main class for step 6 in main.py
 class CustROI2:
-    def __init__(self, imsrc_top, msg_top, fact_top):
-        self.top = DrawSpineAxis(imsrc_top, msg_top, fact_top)
+    def __init__(self, imsrc_top, msg_top, fact_top, width):
+        self.top = DrawSpineAxis(imsrc_top, msg_top, fact_top, width)
 
 
 # Main class for step 7 in main.py
@@ -348,7 +348,7 @@ class DrawSpineAxis:
        - distance AB decreases linearly as we move along the spine towards its caudal aspect.
     4. Calculate splines joining side points and define final polygon.
     """
-    def __init__(self, im, msg, fact):
+    def __init__(self, im, msg, fact, width):
         self.im = im
         self.fact = fact
         self.msg = msg
@@ -362,6 +362,9 @@ class DrawSpineAxis:
         self.mag_width = 20
         self.L6_pos = None  # Position of vertebrae L6
         self.first_call = True
+        self.width = width  # Tuple (a,b) where:
+                            # a is width (in pixels) around central spline at the level of the tail.
+                            # b is width (in pixels) around central spline at the level of the head.
 
     def DrawL6(self):
         """
@@ -405,34 +408,24 @@ class DrawSpineAxis:
         """
         Draw spline along spine axis.
         This class is coupled to callback2 (for handling mouse events).
-        Pixel numbers in original 512 x 512 image:
-        **********************************
-        * (0,0) → increasing x → (511,0) *
-        *      ↓                         *
-        * increasing y                   *
-        *      ↓                         *
-        * (0,511)              (511,511) *
-        **********************************
-        Convention: head is toward top of image, tail is toward bottom of image.
-        Define how distance D between side points changes as we move along the spine towards the tail
-        D = 30-(25/511)*y, meaning that D = 30 for y = 0 (top of image) and D = 5 for y = 511 (bottom of image)
-        Reference points are defined as [[x1,y1],[x2,y2],...,[xn,yn]]
-        Note that the points are not listed in order (ascending/descending values of x or y)
-        This means that the user does not have to worry about selecting reference points...
-        ...in a specific order along the spine.
-        Initialize up and bottom limits for "magnetism" of extreme points
         """
+
         self.first_call = True # Because was used by DrawL6 just before.
         self.pts = [] # Resetting self.pts (used by DrawL6 just before).
+
+        # Deal with top and bottom margins (for magnetism):
         mag_top = [[0, self.mag_width], [self.im.shape[1]-1, self.mag_width]]
         mag_bottom = [[0, self.im.shape[0]-1 - self.mag_width], [self.im.shape[1]-1, self.im.shape[0]-1 - self.mag_width]]
         cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * i) for i in mag_top[0]]),
                  tuple([math.floor(self.resize_factor * i) for i in mag_top[1]]), (200, 200, 200), 1)
         cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * i) for i in mag_bottom[0]]),
                  tuple([math.floor(self.resize_factor * i) for i in mag_bottom[1]]), (200, 200, 200), 1)
-        cv2.imshow(self.msg, self.im_resized)  # Initialize window with proper title
-        cv2.setMouseCallback(self.msg, self.callback2)  # Bind window to the callback
+
+        cv2.imshow(self.msg, self.im_resized)  # Initialize window with proper title.
+        cv2.setMouseCallback(self.msg, self.callback2)  # Bind window to the callback.
+
         while True:
+
             if self.first_call:
                 cv2.putText(self.im_resized, "Please draw spine axis",
                     (50, int(round(100 * self.resize_factor))),
@@ -442,50 +435,54 @@ class DrawSpineAxis:
                     cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2, lineType = cv2.LINE_AA)
                 cv2.imshow(self.msg, self.im_resized)
                 self.first_call = False
+
             if self.something_changed:
-                # Upper and lower lines (for magnetism of extreme points)
+                # Draw top and bottom margins:
                 cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * i) for i in mag_top[0]]),
                          tuple([math.floor(self.resize_factor * i) for i in mag_top[1]]), (200, 200, 200), 1)
                 cv2.line(self.im_resized, tuple([math.floor(self.resize_factor * i) for i in mag_bottom[0]]),
                          tuple([math.floor(self.resize_factor * i) for i in mag_bottom[1]]), (200, 200, 200), 1)
+
                 if len(self.pts) > 0:
-                    # Reference points sorted by ascending y value (ordered from head to tail)
+                    # Reference points are stored in an array with:
+                    # x: ML coordinate (value increasing toward right of animal) y: rostro-caudal coordinate (increasing toward tail).
                     pts_arr = np.array(self.pts)
-                    pts_arr_sorted = pts_arr[np.argsort(pts_arr[:, 1])]
-                    if len(self.pts) <= 3:
-                        for i in range(len(self.pts)):  # Draw circle on each reference point
+                    pts_arr_sorted = pts_arr[np.argsort(pts_arr[:, 1])]  # Sort by y values.
+                    if len(self.pts) <= 3:  # For 3 points or less, just draw the points (not the spline).
+                        for i in range(len(self.pts)):
                             cv2.circle(self.im_resized, tuple(pts_arr_sorted[i]), 5, (0, 255, 0), -1)
-                    if len(self.pts) > 3:
-                        # Compute spline joining reference points
-                        x, y = np.array(pts_arr_sorted)[:, 0], np.array(pts_arr_sorted)[:, 1]
-                        f = interp1d(y, x, kind='cubic')  # Compute spline function
+                    if len(self.pts) > 3:  # For more than 3 points, draw points and spline.
+                        # Compute spline joining reference points (= central spline).
+                        x, y = pts_arr_sorted[:, 0], pts_arr_sorted[:, 1]
+                        f = interp1d(y, x, kind='cubic')  # Compute spline function.
                         # Goal: describe spline with 100 points (npts = 100).
                         npts = math.floor(np.ptp(y) * 100 / (self.im.shape[0] * int(self.resize_factor)))
-                        # Evenly spaced points along y axis
+                        # Evenly spaced points along y axis.
                         ynew = np.linspace(np.min(y), np.max(y), num=npts, endpoint=True)
-                        ptsnew = np.vstack((np.array(f(ynew)), ynew)).T  # Coordinates of spline points
-                        ptsnewint = np.floor(ptsnew).astype('int16')  # Same but integer values
-                        for i in range(ptsnewint.shape[0] - 1):
+                        ptsnew = np.vstack((np.array(f(ynew)), ynew)).T  # Coordinates of spline points.
+                        ptsnewint = np.floor(ptsnew).astype('int16')  # Same but integer values.
+                        for i in range(ptsnewint.shape[0] - 1):  # Draw central spline.
                             cv2.line(self.im_resized, tuple(ptsnewint[i, :]),
                                      tuple(ptsnewint[i + 1, :]), (0, 255, 255), 1)
                         # Given n reference points defined by the user (used to compute the spline above)...
                         # ...compute normalized vectors describing direction of spline (dv: direction vector) at each reference point.
+                        # -> dv contains coordinates of (normalized) vector tangential to spline at location of reference points.
                         dv = utils.Norml(np.vstack((np.array(np.append(f(y[:-1] + 1) - x[:-1], -(f(y[-1] - 1) - x[-1]))),
                                                     [1 for i in range(0, len(y))])).T)
                         for i in range(dv.shape[0]):
                             cv2.line(self.im_resized,
                                      tuple(pts_arr_sorted[i]),
                                      tuple(np.floor(pts_arr_sorted[i] + 50 * dv[i]).astype('int16')), (255, 0, 255), 2)
-                        # Compute side points A and B (see description at begining of file); A is on the left, B is on the right
-                        dva, dvb = np.vstack((-dv[:, 1], dv[:, 0])).T, np.vstack((dv[:, 1], -dv[:, 0])).T  # Simple 90 deg rotation
+                        # Compute side points A and B; A is on the left, B is on the right of reference point.
+                        dva, dvb = np.vstack((-dv[:, 1], dv[:, 0])).T, np.vstack((dv[:, 1], -dv[:, 0])).T  # Simple 90 deg rotation.
                         side_a, side_b = dva.copy(), dvb.copy()
-                        # Apply scaling factor such that D (distance between side points) decreases when moving toward the tail
+                        # Apply scaling factor such that D (distance between side points) decreases when moving toward the tail.
+                        width_vals = self.width[1] - (self.width[1] - self.width[0]) * pts_arr_sorted[:,1]/max(pts_arr_sorted[:,1])  # Width along rostro-caudal axis.
                         for i in range(pts_arr_sorted.shape[0]):
-                            # Here: D = 30 at top of image and D = 10 at bottom of image
-                            side_a[i, :] = pts_arr_sorted[i] + (10 - (5 / (int(self.resize_factor * (self.im.shape[0]-1)))) * pts_arr_sorted[i, 1]) * dva[i]
-                            side_b[i, :] = pts_arr_sorted[i] + (10 - (5 / (int(self.resize_factor * (self.im.shape[0]-1)))) * pts_arr_sorted[i, 1]) * dvb[i]
+                            side_a[i, :] = pts_arr_sorted[i] + self.resize_factor * ( 0.5 * width_vals[i] ) * dva[i]
+                            side_b[i, :] = pts_arr_sorted[i] + self.resize_factor * ( 0.5 * width_vals[i] ) * dvb[i]
                         side_a_int, side_b_int = np.floor(side_a).astype('int16'), np.floor(side_b).astype('int16')  # For plotting only
-                        for i in range(dv.shape[0]):
+                        for i in range(dv.shape[0]):  # Draw line joining left and right side points.
                             cv2.line(self.im_resized, tuple(side_a_int[i]), tuple(side_b_int[i]), (255, 0, 0), 1)
                         # Compute splines for right side points (same method as above)
                         x, y = np.array(side_a)[:, 0], np.array(side_a)[:, 1]
@@ -539,10 +536,11 @@ class DrawSpineAxis:
                         # Compute side points A and B (see description at begining of file); A is on the left, B is on the right
                         dva, dvb = np.vstack((-dv[:, 1], dv[:, 0])).T, np.vstack((dv[:, 1], -dv[:, 0])).T  # Simple 90 deg rotation
                         side_a, side_b = dva.copy(), dvb.copy()
-                        # Apply scaling factor such that D (distance between side points) decreases when moving toward the tail
+                        # Apply scaling factor such that D (distance between side points) decreases when moving toward the tail.
+                        width_vals = self.width[1] - (self.width[1] - self.width[0]) * pts_arr_sorted[:,1]/max(pts_arr_sorted[:,1])  # Width along rostro-caudal axis.
                         for i in range(pts_arr_sorted.shape[0]):
-                            side_a[i, :] = pts_arr_sorted[i] + (8 - (8 / (self.im.shape[0]-1) ) * pts_arr_sorted[i, 1]) * dva[i]
-                            side_b[i, :] = pts_arr_sorted[i] + (8 - (8 / (self.im.shape[0]-1) ) * pts_arr_sorted[i, 1]) * dvb[i]
+                            side_a[i, :] = pts_arr_sorted[i] + self.resize_factor * ( 0.5 * width_vals[i] ) * dva[i]
+                            side_b[i, :] = pts_arr_sorted[i] + self.resize_factor * ( 0.5 * width_vals[i] ) * dvb[i]
                         # Compute splines for right side points (same method as above)
                         x, y = np.array(side_a)[:, 0], np.array(side_a)[:, 1]
                         f = interp1d(y, x, kind='cubic')
