@@ -1,20 +1,22 @@
 
 '''
 Main PyMicroCT functions (run_analysis, vertebral_profiles and vertebral_angles) are here.
-
-Data organization:
-
 '''
 
-import os, cv2, dicom, pydicom, roi, time, pickle, sys, glob
+# Python modules:
+import os, cv2, pydicom, time, pickle, sys, glob
 import numpy as np
-import utilities as utils
 from datetime import date
 from scipy.interpolate import interp1d
-import symmetry as sym
-from cython_code import cyutils
 import pandas as pd
 import matplotlib.pyplot as plt
+
+# Custom modules:
+import dicom  # Custom module to bundle several .dcm files into one 3D numpy array.
+import utilities as utils
+import roi
+import symmetry as sym
+from cython_code import cyutils
 
 
 def run_analysis(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='SPINE'):
