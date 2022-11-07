@@ -21,11 +21,15 @@ from cython_code import cyutils
 
 def run_analysis(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='SPINE'):
 
+    # Change default string for arg datapath depending on dataset:
+    # datapath='/mnt/data/DATA_SSPO' for SSPO mice.
+    # datapath='/mnt/data/DATA_MICROCT' for POC5 mice.
+
     # For debug:
     # datapath='/mnt/data/DATA_SSPO'
     # struct='SPINE'
-    # session='example_session_SPINE'
-    # mouse='example_mouse_Colonne'
+    # session='SSPO_cohort-1_SPINE'
+    # mouse='Mouse_53-2_Colonne'
 
     ''' Step 1: define paths '''
 
@@ -56,7 +60,7 @@ def run_analysis(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='SPINE')
         # ...
         # mouseXXX_sessionYY_0512.dcm
         # Using package dicom to read file.
-        # Test with XXX (system used at Montrouge).
+        # Tested with .dcm files obtained with a Micro-CT Quantum FX (Perkin Elmer).
 
         # For debug:
         # data_path = '/mnt/data/DATA_MICROCT/SPINE/20190724_SPINE/BY927_23_Colonne_164250/data'
