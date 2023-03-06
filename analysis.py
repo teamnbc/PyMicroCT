@@ -24,6 +24,7 @@ def run_analysis(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='SPINE')
     # Change default string for arg datapath depending on dataset:
     # datapath='/mnt/data/DATA_SSPO' for SSPO mice.
     # datapath='/mnt/data/DATA_MICROCT' for POC5 mice.
+    # datapath='/mnt/data/DATA_Micro-CT_CR_CHUSJ' for CHUSJ mice.
 
     # For debug:
     # datapath='/mnt/data/DATA_SSPO'
@@ -46,6 +47,9 @@ def run_analysis(session, mouse, datapath='/mnt/data/DATA_SSPO', struct='SPINE')
         os.makedirs(roi_path)
 
     ''' Step 2: obtain 3D array and voxel info from .dcm file(s) '''
+
+    # Debug for CHUSJ mice:
+    # data_path = '/mnt/data/DATA_Micro-CT_CR_CHUSJ/SPINE/DICOM/2M/2M-25J-1'
 
     dcm_files = glob.glob(data_path + '/*.dcm')  # Looking for .dcm files in data folder.
     ndcm = len(dcm_files)  # Number of .dcm files.

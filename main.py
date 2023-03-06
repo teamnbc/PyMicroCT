@@ -19,6 +19,7 @@ if __name__ == '__main__':
     # Debug:
     # os.chdir('/mnt/data/DATA_MICROCT/SPINE/20201014_SPINE/CN723_40_Colonne_111610')
     # os.chdir('/mnt/data/DATA_SSPO/SPINE/example_session_SPINE/example_mouse_Colonne')
+    # os.chdir('/mnt/data/DATA_Micro-CT_CR_CHUSJ')
 
     wd = os.getcwd()
     if not os.path.exists(os.path.join(wd,'data')):
